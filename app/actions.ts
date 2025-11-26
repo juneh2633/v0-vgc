@@ -28,25 +28,30 @@ export async function fetchCharts(params: FetchChartsParams): Promise<RandomChar
   if (minVersion !== undefined) queryParams.append("minVersion", minVersion.toString())
   if (maxVersion !== undefined) queryParams.append("maxVersion", maxVersion.toString())
   if (count !== undefined) queryParams.append("count", count.toString())
-  if (isMegamix) queryParams.append("isMegamix", "true")
+
 
   const baseUrl =  "https://juneh2633.ddns.net"
-  const url = `${baseUrl}/api/random?${queryParams.toString()}`
+  const endpoint = isMegamix
+      ? "/chart/random/megamix"
+      : "/chart/random"
 
-  console.log("[v0] Fetching from:", url)
+    const url = `${baseUrl}${endpoint}?${queryParams.toString()}`
 
-  const response = await fetch(url, {
-    cache: "no-store",
-  })
+    console.log("[fetchCharts] Fetching URL:", url)
 
-  if (!response.ok) {
-    console.log("[v0] Response not ok:", response.status)
-    throw new Error(`API request failed with status ${response.status}`)
-  }
+    const response = await fetch(url, {
+      method: "GET",
+      cache: "no-store",
+    })
 
-  const data = await response.json()
-  console.log("[v0] Received data keys:", Object.keys(data))
-  console.log("[v0] chartData:", data.chartData?.length || 0, "items")
+    if (!response.ok) {
+      console.error("[fetchCharts] Error:", response.status)
+      throw new Error(`API request failed with status ${response.status}`)
+    }
 
-  return data.chartData || []
+    const data = await response.json()
+
+    console.log("[fetchCharts] chartData items:", data.chartData?.length || 0)
+
+    return data.chartData || []
 }
