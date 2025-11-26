@@ -30,7 +30,7 @@ export async function fetchCharts(params: FetchChartsParams): Promise<RandomChar
   if (count !== undefined) queryParams.append("count", count.toString())
   if (isMegamix) queryParams.append("isMegamix", "true")
 
-  const baseUrl = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "https://juneh2633.ddns.net"
+  const baseUrl =  "https://juneh2633.ddns.net"
   const url = `${baseUrl}/api/random?${queryParams.toString()}`
 
   console.log("[v0] Fetching from:", url)
