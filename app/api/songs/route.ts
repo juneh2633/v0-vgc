@@ -5,6 +5,10 @@ export async function GET() {
     const response = await fetch("https://juneh2633.ddns.net/chart/meta", {
       headers: {
         "Content-Type": "application/json",
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        Accept: "application/json",
+        "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
       },
     })
 
@@ -13,11 +17,6 @@ export async function GET() {
     }
 
     const data = await response.json()
-    console.log("[v0] Server-side API Response keys:", Object.keys(data))
-    console.log("[v0] chartData length:", data.chartData?.length)
-    if (data.chartData?.[0]) {
-      console.log("[v0] First item keys:", Object.keys(data.chartData[0]))
-    }
 
     return NextResponse.json(data)
   } catch (error) {

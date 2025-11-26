@@ -28,6 +28,12 @@ export async function GET(request: Request) {
   try {
     const response = await fetch(url, {
       cache: "no-store",
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        Accept: "application/json",
+        "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
+      },
     })
 
     if (!response.ok) {
@@ -36,15 +42,6 @@ export async function GET(request: Request) {
     }
 
     const data = await response.json()
-    console.log("[v0] Random API Response keys:", Object.keys(data))
-    console.log("[v0] data exists:", !!data.data)
-    if (data.data) {
-      console.log("[v0] data length:", data.data.length)
-      if (data.data.length > 0) {
-        console.log("[v0] First chart keys:", Object.keys(data.data[0]))
-        console.log("[v0] First chart sample:", JSON.stringify(data.data[0]).substring(0, 500))
-      }
-    }
 
     return NextResponse.json({ chartData: data.data || [] })
   } catch (error) {
