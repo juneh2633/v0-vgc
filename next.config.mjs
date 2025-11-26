@@ -8,7 +8,7 @@ const nextConfig = {
     remotePatterns: [
       {
         protocol: "https",
-        hostname: "sdvxindex.com",
+        hostname: "juneh2633.ddns.net",
       },
     ],
   },
