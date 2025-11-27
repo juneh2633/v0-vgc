@@ -159,6 +159,31 @@ const defaultData = (): TournamentData => ({
   overtime: defaultOvertimeData(),
 })
 
+const PRE_PICK_COUNT: Record<number, number> = {
+  0: 3, // 1라운드 index 0
+  1: 5, // 2라운드 index 1
+  2: 3, // 3라운드 index 2
+  3: 2, // 4라운드 index 3
+}
+
+// 난이도 색상 데이터
+const TYPE_COLORS_DATA = [
+  { typeName: "novice", typeShortName: "nov", color: 11954170 },
+  { typeName: "advanced", typeShortName: "adv", color: 16776484 },
+  { typeName: "exhaust", typeShortName: "exh", color: 15794433 },
+  { typeName: "maximum", typeShortName: "mxm", color: 9935263 },
+  { typeName: "infinite", typeShortName: "inf", color: 16711935 },
+  { typeName: "gravity", typeShortName: "grv", color: 16421125 },
+  { typeName: "heavenly", typeShortName: "hvn", color: 45296 },
+  { typeName: "vivid", typeShortName: "vvd", color: 16261747 },
+  { typeName: "exceed", typeShortName: "xcd", color: 1351423 },
+  { typeName: "ultimate", typeShortName: "ult", color: 16768343 }
+]
+
+// 10진수 색상 → "#RRGGBB" 변환
+const toHexColor = (n: number) =>
+  "#" + n.toString(16).padStart(6, "0")
+
 const getTypeLabel = (type: string): string => {
   const labels: Record<string, string> = {
     nov: "NOV",
@@ -367,17 +392,17 @@ export function drawSongCard(
   const textMaxWidth = cardWidth - (textX - x) - 16
 
   // 선수 이름
-  ctx.fillStyle = "#9ca3af"
-  ctx.font = "12px system-ui, sans-serif"
-  ctx.textAlign = "left"
-  ctx.textBaseline = "top"
-  ctx.fillText(song.player || "PLAYER", textX, y + 14)
+  // ctx.fillStyle = "#9ca3af"
+  // ctx.font = "12px system-ui, sans-serif"
+  // ctx.textAlign = "left"
+  // ctx.textBaseline = "top"
+  // ctx.fillText(song.player || "PLAYER", textX, y + 14)
 
   // 곡명
   ctx.fillStyle = "#f9fafb"
   const rawTitle = song.songName || ""
   const cleanTitle = stripDifficultyFromTitle(rawTitle, song)
-  const titleTopY = y + 32
+  const titleTopY = y + 54
   const { totalHeight } = drawAutoFitTitle(
     ctx,
     cleanTitle,
@@ -390,7 +415,7 @@ export function drawSongCard(
   )
 
   // 아티스트
-  let nextTextY = titleTopY + totalHeight + 4
+  let nextTextY = titleTopY + totalHeight + 4 -8
   if (song.info?.artist) {
     ctx.fillStyle = "#9ca3af"
     ctx.font = "12px system-ui, sans-serif"
@@ -426,7 +451,17 @@ export function drawSongCard(
       XCD: "#22c55e",
     }
 
-    ctx.fillStyle = typeColors[song.info.type.toUpperCase()] || "#6b7280"
+    // ctx.fillStyle = typeColors[song.info.type.toUpperCase()] || "#6b7280"
+    const shortName = song.info.type.toLowerCase()
+    console.log("Drawing badge for type:", shortName)
+    // JSON 데이터에서 매칭
+    const typeColorEntry = TYPE_COLORS_DATA.find(
+      (t) => t.typeName === shortName
+    )
+
+    ctx.fillStyle = typeColorEntry
+      ? toHexColor(typeColorEntry.color)
+      : "#6b7280"
     const badgeY = y + cardHeight - 50
 
     ctx.beginPath()
@@ -791,6 +826,207 @@ export function TournamentScriptManager({ onBack }: { onBack: () => void }) {
       jacketImg,
       `round${imageRoundIdx + 1}_${safeTeam}_${safePlayer}.png`,
     )
+  }
+  const generatePrePickImage = async (roundIdx: number) => {
+    const round = data.rounds[roundIdx]
+
+    const isRound13 = roundIdx === 0 || roundIdx === 2
+    const isRound2 = roundIdx === 1
+    const isRound4 = roundIdx === 3
+
+    // 1) 라운드별로 사용해야 할 곡 배열 선택 (밴/스트래티지 전 원본)
+    let rawTeam1: string[] = []
+    let rawTeam2: string[] = []
+
+    if (isRound13) {
+      rawTeam1 = round.team1Songs || []
+      rawTeam2 = round.team2Songs || []
+    } else if (isRound2) {
+      rawTeam1 = round.team1SongsLong || []
+      rawTeam2 = round.team2SongsLong || []
+    } else if (isRound4) {
+      rawTeam1 = round.team1Songs2 || []
+      rawTeam2 = round.team2Songs2 || []
+    }
+
+    // 라운드별 개수 제한 (3/5/3/2)
+    const maxCount = PRE_PICK_COUNT[roundIdx] ?? rawTeam1.length
+    const team1Base = rawTeam1
+      .map((name, idx) => ({ name, idx }))
+      .filter(({ name }) => name.trim() !== "")
+      .slice(0, maxCount)
+
+    const team2Base = rawTeam2
+      .map((name, idx) => ({ name, idx }))
+      .filter(({ name }) => name.trim() !== "")
+      .slice(0, maxCount)
+
+    if (team1Base.length === 0 && team2Base.length === 0) {
+      setNotification({ type: "error", message: "사전 픽된 곡이 없습니다." })
+      return
+    }
+
+    // 2) songInfoMap 에서 SongInfo 꺼내는 헬퍼 (generateSongListImage 안의 것 복붙)
+    const getSongInfoByField = (field: keyof RoundData, arrayIdx: number): SongInfo | null => {
+      const infoKey = `round${roundIdx}_${String(field)}_${arrayIdx}`
+      return data.songInfoMap[infoKey] || null
+    }
+
+    // 3) SongEntry 배열로 변환 (플레이어 이름은 카드에서 안 쓰이므로 빈 문자열로 둠)
+    const team1Songs: SongEntry[] = team1Base.map(({ name, idx }) => ({
+      team: data.team1.name,
+      player: "", // 플레이어 표시 안 하기로 해서 비워 둠
+      songName: name,
+      info: isRound13
+        ? getSongInfoByField("team1Songs", idx)
+        : isRound2
+          ? getSongInfoByField("team1SongsLong", idx)
+          : getSongInfoByField("team1Songs2", idx),
+      isStrategy: false,
+    }))
+
+    const team2Songs: SongEntry[] = team2Base.map(({ name, idx }) => ({
+      team: data.team2.name,
+      player: "",
+      songName: name,
+      info: isRound13
+        ? getSongInfoByField("team2Songs", idx)
+        : isRound2
+          ? getSongInfoByField("team2SongsLong", idx)
+          : getSongInfoByField("team2Songs2", idx),
+      isStrategy: false,
+    }))
+
+    const songs = [...team1Songs, ...team2Songs]
+    const rows = Math.max(team1Songs.length, team2Songs.length)
+
+    // 4) 자켓 이미지 로딩 (base64 우선)
+    const loadImage = (src: string): Promise<HTMLImageElement | null> => {
+      return new Promise((resolve) => {
+        if (!src) return resolve(null)
+        const img = new window.Image()
+        img.crossOrigin = "anonymous"
+        img.onload = () => resolve(img)
+        img.onerror = () => resolve(null)
+        img.src = src.startsWith("data:")
+          ? src
+          : `/api/image-proxy?url=${encodeURIComponent(src)}`
+      })
+    }
+
+    const jacketImages: (HTMLImageElement | null)[] = await Promise.all(
+      songs.map((song) => {
+        if (song.info?.jacketBase64) {
+          return loadImage(song.info.jacketBase64)
+        } else if (song.info?.jacket) {
+          return loadImage(song.info.jacket)
+        }
+        return Promise.resolve(null)
+      }),
+    )
+
+    const getJacketForSong = (song: SongEntry): HTMLImageElement | null => {
+      const idx = songs.indexOf(song)
+      if (idx === -1) return null
+      return jacketImages[idx]
+    }
+
+    // 5) 캔버스 사이즈 및 배경 (기존 generateSongListImage 와 통일)
+    const cardWidth = 540
+    const cardHeight = 190
+    const jacketSize = 150
+    const padding = 28
+
+    const col1X = padding
+    const col2X = padding * 2 + cardWidth
+
+    const canvas = document.createElement("canvas")
+    canvas.width = 2 * cardWidth + padding * 3
+    canvas.height = rows * cardHeight + padding * (rows + 1) + 100
+
+    const ctx = canvas.getContext("2d")
+    if (!ctx) return
+
+    const bgGradient = ctx.createLinearGradient(0, 0, 0, canvas.height)
+    bgGradient.addColorStop(0, "#020617")
+    bgGradient.addColorStop(0.5, "#020617")
+    bgGradient.addColorStop(1, "#111827")
+    ctx.fillStyle = bgGradient
+    ctx.fillRect(0, 0, canvas.width, canvas.height)
+
+    // 상단 타이틀: "n라운드 사전 픽 선곡 목록"
+    ctx.fillStyle = "#e5e7eb"
+    ctx.font = "bold 26px system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+    ctx.textAlign = "center"
+    ctx.textBaseline = "top"
+    ctx.fillText(`${roundIdx + 1}라운드 사전 픽 선곡 목록`, canvas.width / 2, 18)
+
+    // 팀 이름 헤더
+    ctx.font = "bold 16px system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+    ctx.textAlign = "left"
+    ctx.fillStyle = "#60a5fa"
+    ctx.fillText(data.team1.name || "TEAM 1", col1X + 12, 52)
+    ctx.fillStyle = "#f97373"
+    ctx.fillText(data.team2.name || "TEAM 2", col2X + 12, 52)
+
+    // 팀 이름 아래 네온 라인
+    ctx.save()
+    ctx.lineWidth = 3
+    ctx.shadowBlur = 12
+    ctx.shadowColor = "#22d3ee"
+
+    ctx.beginPath()
+    ctx.strokeStyle = "#2563eb"
+    ctx.moveTo(col1X + 10, 74)
+    ctx.lineTo(col1X + cardWidth - 10, 74)
+    ctx.stroke()
+
+    ctx.beginPath()
+    ctx.strokeStyle = "#ef4444"
+    ctx.moveTo(col2X + 10, 74)
+    ctx.lineTo(col2X + cardWidth - 10, 74)
+    ctx.stroke()
+    ctx.restore()
+
+    // 여기서 drawSongCard는 이미 generateSongListImage 안에서 쓰던 내부 함수 그대로 사용
+    // (위에서 사용하던 것 그대로 두고, 여기서도 재사용하면 됩니다)
+    const startY = 80 + padding
+
+    for (let row = 0; row < rows; row++) {
+      const y = startY + row * (cardHeight + padding)
+
+      const songLeft = team1Songs[row]
+      const songRight = team2Songs[row]
+      const baseWidth = 540
+      const baseHeight = 190
+
+      if (songLeft) {
+        drawSongCard(ctx, songLeft, col1X, y, getJacketForSong(songLeft), {
+          cardWidth: baseWidth,
+          cardHeight: baseHeight,
+          jacketSize: 150,
+          team1Name: data.team1.name,
+        })
+      }
+
+      if (songRight) {
+        drawSongCard(ctx, songRight, col2X, y, getJacketForSong(songRight), {
+          cardWidth: baseWidth,
+          cardHeight: baseHeight,
+          jacketSize: 150,
+          team1Name: data.team1.name,
+        })
+      }
+
+
+    }
+
+    setGeneratedImage(canvas.toDataURL("image/png"))
+    jacketsRef.current = jacketImages
+    setCurrentSongsForRound(songs)
+    setSelectedSongIndex(songs.length > 0 ? 0 : null)
+    setImageRoundIdx(roundIdx)
+    setImageDialogOpen(true)
   }
 
   const generateSongListImage = async (roundIdx: number) => {
@@ -1337,11 +1573,11 @@ export function TournamentScriptManager({ onBack }: { onBack: () => void }) {
       const textMaxWidth = cardWidth - (textX - x) - 16
 
       // 선수 이름
-      ctx.fillStyle = "#9ca3af"
-      ctx.font = "12px system-ui, sans-serif"
-      ctx.textAlign = "left"
-      ctx.textBaseline = "top"
-      ctx.fillText(song.player || "PLAYER", textX, y + 14)
+      // ctx.fillStyle = "#9ca3af"
+      // ctx.font = "12px system-ui, sans-serif"
+      // ctx.textAlign = "left"
+      // ctx.textBaseline = "top"
+      // ctx.fillText(song.player || "PLAYER", textX, y + 14)
 
       // 곡명 (두 줄까지, 줄바꿈 / … 없음)
       ctx.fillStyle = "#f9fafb"
@@ -1351,7 +1587,7 @@ export function TournamentScriptManager({ onBack }: { onBack: () => void }) {
       const cleanTitle = stripDifficultyFromTitle(rawTitle, song)
 
       // 최대 2줄 안에 전부 들어갈 때까지 폰트를 줄여가며 그리기
-      const titleTopY = y + 32
+      const titleTopY = y + 54
       const { lineCount, fontSize, totalHeight } = drawAutoFitTitle(
         ctx,
         cleanTitle,
@@ -1364,7 +1600,7 @@ export function TournamentScriptManager({ onBack }: { onBack: () => void }) {
       )
 
       // 아티스트
-      let nextTextY = titleTopY + totalHeight + 4
+      let nextTextY = titleTopY + totalHeight + 4 -8
       if (song.info?.artist) {
         ctx.fillStyle = "#9ca3af"
         ctx.font = "12px system-ui, sans-serif"
@@ -1402,7 +1638,16 @@ export function TournamentScriptManager({ onBack }: { onBack: () => void }) {
           XCD: "#22c55e",
         }
 
-        ctx.fillStyle = typeColors[song.info.type.toUpperCase()] || "#6b7280"
+        const shortName = song.info.type.toLowerCase()
+        console.log("Drawing badge for type:", shortName)
+        // JSON 데이터에서 매칭
+        const typeColorEntry = TYPE_COLORS_DATA.find(
+          (t) => t.typeName === shortName
+        )
+
+        ctx.fillStyle = typeColorEntry
+          ? toHexColor(typeColorEntry.color)
+          : "#6b7280"
 
         // 카드 하단에서 20px 위에 고정
         const badgeY = y + cardHeight - 50
@@ -2552,7 +2797,14 @@ ${filtered.map((song) => `* ${song}`).join("\n")}`
                   <ImageIcon className="h-4 w-4 mr-2" />
                   선곡 목록 이미지 생성
                 </Button>
-
+                <Button
+                  variant="outline"
+                  className="w-full bg-transparent"
+                  onClick={() => generatePrePickImage(roundIdx)}
+                >
+                  <ImageIcon className="h-4 w-4 mr-2" />
+                  (밴픽 전) 사전 픽 선곡 목록 이미지 생성
+                </Button>
                 <ScriptCard
                   title="녹화 시작 안내"
                   script={generateRecordingStartScript(roundIdx)}
@@ -2804,7 +3056,14 @@ ${filtered.map((song) => `* ${song}`).join("\n")}`
                 <ImageIcon className="h-4 w-4 mr-2" />
                 선곡 목록 이미지 생성
               </Button>
-
+              <Button
+                variant="outline"
+                className="w-full bg-transparent"
+                onClick={() => generatePrePickImage(1)}
+              >
+                <ImageIcon className="h-4 w-4 mr-2" />
+                (밴픽 전) 사전 픽 선곡 목록 이미지 생성
+              </Button>
               <ScriptCard title="녹화 시작 안내" script={generateRecordingStartScript(1)} id="r2-rec-start" />
               <ScriptCard title="엔트리 공개" script={generateEntryScript(1)} id="r2-entry" />
               <div className="space-y-2">
@@ -2972,7 +3231,14 @@ ${filtered.map((song) => `* ${song}`).join("\n")}`
                 <ImageIcon className="h-4 w-4 mr-2" />
                 선곡 목록 이미지 생성
               </Button>
-
+              <Button
+                variant="outline"
+                className="w-full bg-transparent"
+                onClick={() => generatePrePickImage(3)}
+              >
+                <ImageIcon className="h-4 w-4 mr-2" />
+                (밴픽 전) 사전 픽 선곡 목록 이미지 생성
+              </Button>
               <ScriptCard title="녹화 시작 안내" script={generateRecordingStartScript(3)} id="r4-rec-start" />
               <ScriptCard title="엔트리 공개" script={generateEntryScript(3)} id="r4-entry" />
               <ScriptCard title="아레나 입장 안내" script={generateArenaEntryScript(3)} id="r4-arena" />
