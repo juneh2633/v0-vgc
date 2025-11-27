@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Copy, Download, Upload, Check, ImageIcon, AlertTriangle, X, ArrowLeft } from "lucide-react"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import useSWR from "swr"
@@ -33,6 +33,14 @@ interface SongInfo {
   date: string
 }
 
+type SongEntry = {
+  team: string
+  player: string
+  songName: string
+  info: SongInfo | null
+  isStrategy: boolean
+}
+
 interface FlattenedChart {
   songIdx: number
   chartIdx: number
@@ -47,6 +55,13 @@ interface FlattenedChart {
 interface Team {
   name: string
   players: [string, string, string]
+}
+
+interface OvertimeData {
+  roomNumber: string
+  designatedSong: string
+  team1Player: string
+  team2Player: string
 }
 
 interface RoundData {
@@ -91,6 +106,7 @@ interface TournamentData {
   team2: Team
   rounds: [RoundData, RoundData, RoundData, RoundData]
   songInfoMap: SongInfoMap
+  overtime: OvertimeData
 }
 
 const defaultRoundData = (): RoundData => ({
@@ -128,11 +144,19 @@ const defaultRoundData = (): RoundData => ({
   team2Strategy18: ["", "", ""],
 })
 
+const defaultOvertimeData = (): OvertimeData => ({
+  roomNumber: "",
+  designatedSong: "",
+  team1Player: "",
+  team2Player: "",
+})
+
 const defaultData = (): TournamentData => ({
   team1: { name: "", players: ["", "", ""] },
   team2: { name: "", players: ["", "", ""] },
   rounds: [defaultRoundData(), defaultRoundData(), defaultRoundData(), defaultRoundData()],
   songInfoMap: {},
+  overtime: defaultOvertimeData(),
 })
 
 const getTypeLabel = (type: string): string => {
@@ -149,6 +173,285 @@ const getTypeLabel = (type: string): string => {
   }
   return labels[type?.toLowerCase()] || type?.toUpperCase() || ""
 }
+
+
+export function drawSongCard(
+  ctx: CanvasRenderingContext2D,
+  song: SongEntry,
+  x: number,
+  y: number,
+  jacketImg: HTMLImageElement | null,
+  options: {
+    cardWidth: number
+    cardHeight: number
+    jacketSize: number
+    team1Name: string
+  },
+) {
+  const { cardWidth, cardHeight, jacketSize, team1Name } = options
+
+  // 곡 제목에서 끝의 난이도 꼬리표(예: " MXM", " EXH") 제거
+  const stripDifficultyFromTitle = (title: string, song: SongEntry): string => {
+    if (!title) return ""
+    if (!song.info?.type) return title
+
+    const typeUpper = song.info.type.toUpperCase().trim()
+    const suffix = " " + typeUpper
+
+    if (title.toUpperCase().endsWith(suffix)) {
+      return title.slice(0, -suffix.length)
+    }
+    return title
+  }
+
+  // 텍스트 wrap (줄 수 제한 없음)
+  const wrapTextUnlimited = (
+    ctx: CanvasRenderingContext2D,
+    text: string,
+    maxWidth: number,
+  ): string[] => {
+    const words = text.split(" ")
+    const lines: string[] = []
+    let currentLine = ""
+
+    for (let i = 0; i < words.length; i++) {
+      const testLine = currentLine ? currentLine + " " + words[i] : words[i]
+      const { width } = ctx.measureText(testLine)
+      if (width > maxWidth && currentLine) {
+        lines.push(currentLine)
+        currentLine = words[i]
+      } else {
+        currentLine = testLine
+      }
+    }
+    if (currentLine) lines.push(currentLine)
+    return lines
+  }
+
+  // 제목 폰트 자동 축소 + 최대 줄 수 제한
+  const drawAutoFitTitle = (
+    ctx: CanvasRenderingContext2D,
+    text: string,
+    x: number,
+    y: number,
+    maxWidth: number,
+    maxLines: number,
+    maxFontSize: number,
+    minFontSize: number,
+  ): { fontSize: number; lineCount: number; totalHeight: number } => {
+    if (!text) return { fontSize: maxFontSize, lineCount: 0, totalHeight: 0 }
+
+    let chosenFontSize = minFontSize
+    let chosenLines: string[] = [text]
+
+    for (let fontSize = maxFontSize; fontSize >= minFontSize; fontSize--) {
+      ctx.font = `bold ${fontSize}px system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif`
+      const lines = wrapTextUnlimited(ctx, text, maxWidth)
+      if (lines.length <= maxLines) {
+        chosenFontSize = fontSize
+        chosenLines = lines
+        break
+      }
+    }
+
+    ctx.font = `bold ${chosenFontSize}px system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif`
+    const lineHeight = chosenFontSize + 4
+    const totalHeight = chosenLines.length * lineHeight
+
+    chosenLines.forEach((line, index) => {
+      if (index >= maxLines) return
+      ctx.fillText(line, x, y + index * lineHeight)
+    })
+
+    return {
+      fontSize: chosenFontSize,
+      lineCount: Math.min(chosenLines.length, maxLines),
+      totalHeight,
+    }
+  }
+
+  // 여러 줄 텍스트 (… 없이 줄바꿈)
+  const drawMultilineText = (
+    ctx: CanvasRenderingContext2D,
+    text: string,
+    x: number,
+    y: number,
+    maxWidth: number,
+    lineHeight: number,
+    maxLines: number,
+  ) => {
+    if (!text) return
+    const words = text.split(" ")
+    const lines: string[] = []
+    let currentLine = ""
+
+    for (let i = 0; i < words.length; i++) {
+      const testLine = currentLine ? currentLine + " " + words[i] : words[i]
+      const { width } = ctx.measureText(testLine)
+      if (width > maxWidth && currentLine) {
+        lines.push(currentLine)
+        currentLine = words[i]
+        if (lines.length === maxLines - 1) break
+      } else {
+        currentLine = testLine
+      }
+    }
+    if (lines.length < maxLines && currentLine) {
+      lines.push(currentLine)
+    }
+
+    lines.slice(0, maxLines).forEach((line, idx) => {
+      ctx.fillText(line, x, y + idx * lineHeight)
+    })
+  }
+
+  const isTeam1 = song.team === team1Name
+
+  // 카드 외곽 네온 보더
+  ctx.save()
+  ctx.beginPath()
+  ctx.roundRect(x, y, cardWidth, cardHeight, 16)
+
+  ctx.shadowColor = isTeam1 ? "#3b82f6" : "#f97373"
+  ctx.shadowBlur = 18
+  ctx.strokeStyle = "rgba(148, 163, 184, 0.6)"
+  ctx.lineWidth = 2
+  ctx.stroke()
+  ctx.restore()
+
+  // 카드 내부 배경
+  const innerGradient = ctx.createLinearGradient(x, y, x + cardWidth, y + cardHeight)
+  innerGradient.addColorStop(0, "rgba(15, 23, 42, 0.95)")
+  innerGradient.addColorStop(1, "rgba(17, 24, 39, 0.9)")
+  ctx.fillStyle = innerGradient
+  ctx.beginPath()
+  ctx.roundRect(x, y, cardWidth, cardHeight, 16)
+  ctx.fill()
+
+  // 팀 색 좌측 바
+  ctx.fillStyle = isTeam1 ? "#3b82f6" : "#ef4444"
+  ctx.beginPath()
+  ctx.roundRect(x, y, 8, cardHeight, [16, 0, 0, 16] as any)
+  ctx.fill()
+
+  const jacketX = x + 22
+  const jacketY = y + (cardHeight - jacketSize) / 2
+
+  // 자켓
+  if (jacketImg) {
+    ctx.save()
+    ctx.beginPath()
+    ctx.roundRect(jacketX, jacketY, jacketSize, jacketSize, 10)
+    ctx.clip()
+    ctx.drawImage(jacketImg, jacketX, jacketY, jacketSize, jacketSize)
+    ctx.restore()
+  } else {
+    // 플레이스홀더
+    const gradient = ctx.createLinearGradient(jacketX, jacketY, jacketX + jacketSize, jacketY + jacketSize)
+    gradient.addColorStop(0, "#4f46e5")
+    gradient.addColorStop(1, "#a855f7")
+    ctx.fillStyle = gradient
+    ctx.beginPath()
+    ctx.roundRect(jacketX, jacketY, jacketSize, jacketSize, 10)
+    ctx.fill()
+
+    ctx.fillStyle = "#e5e7eb"
+    ctx.font = "40px system-ui, sans-serif"
+    ctx.textAlign = "center"
+    ctx.textBaseline = "middle"
+    ctx.fillText("♪", jacketX + jacketSize / 2, jacketY + jacketSize / 2)
+  }
+
+  // 텍스트 영역
+  const textX = jacketX + jacketSize + 16
+  const textMaxWidth = cardWidth - (textX - x) - 16
+
+  // 선수 이름
+  ctx.fillStyle = "#9ca3af"
+  ctx.font = "12px system-ui, sans-serif"
+  ctx.textAlign = "left"
+  ctx.textBaseline = "top"
+  ctx.fillText(song.player || "PLAYER", textX, y + 14)
+
+  // 곡명
+  ctx.fillStyle = "#f9fafb"
+  const rawTitle = song.songName || ""
+  const cleanTitle = stripDifficultyFromTitle(rawTitle, song)
+  const titleTopY = y + 32
+  const { totalHeight } = drawAutoFitTitle(
+    ctx,
+    cleanTitle,
+    textX,
+    titleTopY,
+    textMaxWidth,
+    2,
+    24,
+    12,
+  )
+
+  // 아티스트
+  let nextTextY = titleTopY + totalHeight + 4
+  if (song.info?.artist) {
+    ctx.fillStyle = "#9ca3af"
+    ctx.font = "12px system-ui, sans-serif"
+    drawMultilineText(ctx, song.info.artist, textX, nextTextY, textMaxWidth, 18, 1)
+    nextTextY += 20
+  }
+
+  // 날짜
+  if (song.info?.date) {
+    ctx.fillStyle = "#6b7280"
+    ctx.font = "11px system-ui, sans-serif"
+    const rawDate = song.info.date
+    const formattedDate = rawDate.includes("T") ? rawDate.split("T")[0] : rawDate.slice(0, 10)
+    drawMultilineText(ctx, formattedDate, textX, nextTextY, textMaxWidth, 16, 1)
+    nextTextY += 18
+  }
+
+  // 난이도/레벨 배지
+  if (song.info?.level && song.info?.type) {
+    const badgeText = `${song.info.type.toUpperCase()} ${song.info.level}`
+    ctx.font = "bold 12px system-ui, sans-serif"
+    const badgeWidth = ctx.measureText(badgeText).width + 14
+
+    const typeColors: Record<string, string> = {
+      NOV: "#6366f1",
+      ADV: "#eab308",
+      EXH: "#ef4444",
+      MXM: "#ec4899",
+      INF: "#ec4899",
+      GRV: "#f97316",
+      HVN: "#06b6d4",
+      VVD: "#a855f7",
+      XCD: "#22c55e",
+    }
+
+    ctx.fillStyle = typeColors[song.info.type.toUpperCase()] || "#6b7280"
+    const badgeY = y + cardHeight - 50
+
+    ctx.beginPath()
+    ctx.roundRect(textX, badgeY, badgeWidth, 22, 6)
+    ctx.fill()
+
+    ctx.fillStyle = "#f9fafb"
+    ctx.textBaseline = "middle"
+    ctx.fillText(badgeText, textX + 7, badgeY + 11)
+  }
+
+  // STRATEGY 라벨
+  if (song.isStrategy) {
+    ctx.save()
+    ctx.fillStyle = "#a855f7"
+    ctx.font = "bold 11px system-ui, sans-serif"
+    ctx.textAlign = "right"
+    ctx.shadowColor = "#a855f7"
+    ctx.shadowBlur = 10
+    ctx.fillText("STRATEGY", x + cardWidth - 14, y + 20)
+    ctx.restore()
+    ctx.textAlign = "left"
+  }
+}
+
 
 const formatSongName = (chart: FlattenedChart): string => {
   return `${chart.title} ${getTypeLabel(chart.type)}`
@@ -189,7 +492,7 @@ const loadImageAsBase64 = async (url: string): Promise<string | null> => {
       console.log("[v0] Failed to load image:", url)
       resolve(null)
     }
-    img.src = url
+    img.src = `/api/image-proxy?url=${encodeURIComponent(url)}`
   })
 }
 
@@ -233,17 +536,23 @@ export function TournamentScriptManager({ onBack }: { onBack: () => void }) {
   const [songSearchOpen, setSongSearchOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
   const [levelFilter, setLevelFilter] = useState("all")
-  const [songSearchTarget, setSongSearchTarget] = useState<{
-    roundIdx: number
-    field: string
-    arrayIdx?: number
-  } | null>(null)
+
+
+  type SongSearchTarget =
+    | { kind: "round"; roundIdx: number; field: string; arrayIdx?: number }
+    | { kind: "overtime"; field: "designatedSong" }
+
+  const [songSearchTarget, setSongSearchTarget] = useState<SongSearchTarget | null>(null)
   const [imageDialogOpen, setImageDialogOpen] = useState(false)
   const [imageRoundIdx, setImageRoundIdx] = useState<number>(0)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [songNotFoundWarning, setSongNotFoundWarning] = useState<string | null>(null)
   const [generatedImage, setGeneratedImage] = useState<string | null>(null) // State to hold the generated image data URL
   const [notification, setNotification] = useState<{ type: "error" | "success"; message: string } | null>(null)
+
+  const [currentSongsForRound, setCurrentSongsForRound] = useState<SongEntry[]>([])
+  const [selectedSongIndex, setSelectedSongIndex] = useState<number | null>(null)
+  const jacketsRef = useRef<(HTMLImageElement | null)[]>([])
 
   const { data: songData } = useSWR<{ chartData: ChartData[] }>("/api/songs", fetcher)
 
@@ -309,12 +618,10 @@ export function TournamentScriptManager({ onBack }: { onBack: () => void }) {
   const handleSelectSong = async (chart: FlattenedChart) => {
     if (!songSearchTarget) return
 
-    const { roundIdx, field, arrayIdx } = songSearchTarget
     const songName = formatSongName(chart)
     const songInfo = chartToSongInfo(chart)
-    const infoKey = arrayIdx !== undefined ? `round${roundIdx}_${field}_${arrayIdx}` : `round${roundIdx}_${field}`
 
-    // Try to load jacket as base64
+    // 공통: 자켓 base64 시도
     if (chart.jacket) {
       const base64 = await loadImageAsBase64(chart.jacket)
       if (base64) {
@@ -322,31 +629,57 @@ export function TournamentScriptManager({ onBack }: { onBack: () => void }) {
       }
     }
 
-    if (arrayIdx !== undefined) {
-      const currentRound = data.rounds[roundIdx]
-      const currentArray = (currentRound[field as keyof RoundData] as string[]) || []
-      const newArray = [...currentArray]
-      newArray[arrayIdx] = songName
-      updateRound(roundIdx, field as keyof RoundData, newArray)
-    } else {
-      updateRound(roundIdx, field as keyof RoundData, songName)
-    }
+    if (songSearchTarget.kind === "round") {
+      const { roundIdx, field, arrayIdx } = songSearchTarget
+      const infoKey =
+        arrayIdx !== undefined ? `round${roundIdx}_${field}_${arrayIdx}` : `round${roundIdx}_${field}`
 
-    setData((prev) => ({
-      ...prev,
-      songInfoMap: {
-        ...prev.songInfoMap,
-        [infoKey]: songInfo,
-      },
-    }))
+      if (arrayIdx !== undefined) {
+        const currentRound = data.rounds[roundIdx]
+        const currentArray = (currentRound[field as keyof RoundData] as string[]) || []
+        const newArray = [...currentArray]
+        newArray[arrayIdx] = songName
+        updateRound(roundIdx, field as keyof RoundData, newArray)
+      } else {
+        updateRound(roundIdx, field as keyof RoundData, songName)
+      }
+
+      setData((prev) => ({
+        ...prev,
+        songInfoMap: {
+          ...prev.songInfoMap,
+          [infoKey]: songInfo,
+        },
+      }))
+    } else if (songSearchTarget.kind === "overtime") {
+      // ✅ 연장전 지정곡
+      setData((prev) => ({
+        ...prev,
+        overtime: {
+          ...prev.overtime,
+          designatedSong: songName,
+        },
+        songInfoMap: {
+          ...prev.songInfoMap,
+          // 연장전 지정곡 정보는 여기 저장
+          overtime_designatedSong: songInfo,
+        },
+      }))
+    }
 
     setSongSearchOpen(false)
     setSearchQuery("")
     setSongSearchTarget(null)
   }
 
+
   const openSongSearch = (roundIdx: number, field: string, arrayIdx?: number) => {
-    setSongSearchTarget({ roundIdx, field, arrayIdx })
+    setSongSearchTarget({ kind: "round", roundIdx, field, arrayIdx })
+    setSongSearchOpen(true)
+  }
+
+  const openOvertimeSongSearch = () => {
+    setSongSearchTarget({ kind: "overtime", field: "designatedSong" })
     setSongSearchOpen(true)
   }
 
@@ -368,6 +701,17 @@ export function TournamentScriptManager({ onBack }: { onBack: () => void }) {
     })
   }
 
+  const clearOvertimeDesignatedSong = () => {
+    setData((prev) => {
+      const newSongInfoMap = { ...prev.songInfoMap }
+      delete newSongInfoMap["overtime_designatedSong"]
+      return {
+        ...prev,
+        overtime: { ...prev.overtime, designatedSong: "" },
+        songInfoMap: newSongInfoMap,
+      }
+    })
+  }
   const clearSong = (roundIdx: number, field: string, arrayIdx?: number) => {
     const infoKey = arrayIdx !== undefined ? `round${roundIdx}_${field}_${arrayIdx}` : `round${roundIdx}_${field}`
 
@@ -386,6 +730,67 @@ export function TournamentScriptManager({ onBack }: { onBack: () => void }) {
       delete newSongInfoMap[infoKey]
       return { ...prev, songInfoMap: newSongInfoMap }
     })
+  }
+  const exportSingleCardImage = (
+    song: SongEntry,
+    jacketImg: HTMLImageElement | null,
+    fileName: string,
+  ) => {
+    // 원본 카드 크기(목록 카드와 동일)
+    const baseWidth = 540
+    const baseHeight = 190
+
+    // 단일 카드 해상도 업스케일 (2배 또는 3배 가능)
+    const scale = 2
+
+    const canvas = document.createElement("canvas")
+    canvas.width = baseWidth * scale
+    canvas.height = baseHeight * scale
+
+    const ctx = canvas.getContext("2d")
+    if (!ctx) return
+
+    // 스케일 적용
+    ctx.scale(scale, scale)
+
+    // 배경
+    const bg = ctx.createLinearGradient(0, 0, 0, baseHeight)
+    bg.addColorStop(0, "#020617")
+    bg.addColorStop(1, "#111827")
+    ctx.fillStyle = bg
+    ctx.fillRect(0, 0, baseWidth, baseHeight)
+
+    // 단일 카드 == 목록 카드 스타일 그대로
+    drawSongCard(ctx, song, 0, 0, jacketImg, {
+      cardWidth: baseWidth,
+      cardHeight: baseHeight,
+      jacketSize: 150,
+      team1Name: data.team1.name,
+    })
+
+    // 다운로드
+    const dataUrl = canvas.toDataURL("image/png")
+    const link = document.createElement("a")
+    link.href = dataUrl
+    link.download = fileName
+    link.click()
+  }
+
+
+  const handleDownloadSingleCard = () => {
+    if (selectedSongIndex === null) return
+    const song = currentSongsForRound[selectedSongIndex]
+    if (!song) return
+
+    const jacketImg = jacketsRef.current[selectedSongIndex] || null
+    const safeTeam = song.team || "team"
+    const safePlayer = song.player || "player"
+
+    exportSingleCardImage(
+      song,
+      jacketImg,
+      `round${imageRoundIdx + 1}_${safeTeam}_${safePlayer}.png`,
+    )
   }
 
   const generateSongListImage = async (roundIdx: number) => {
@@ -431,13 +836,7 @@ export function TournamentScriptManager({ onBack }: { onBack: () => void }) {
     }
 
     // 3. 라운드별로 "실제 보여줄 곡" 리스트 만들기
-    type SongEntry = {
-      team: string
-      player: string
-      songName: string
-      info: SongInfo | null
-      isStrategy: boolean
-    }
+
 
     const songs: SongEntry[] = []
 
@@ -510,7 +909,6 @@ export function TournamentScriptManager({ onBack }: { onBack: () => void }) {
       })
     }
 
-    // ----- 2 라운드 (1v1, 5곡씩) -----
     // ----- 2 라운드 (1v1, 5곡씩, 스트래티지 상대곡 교체) -----
     if (isRound2) {
       const rawTeam1Songs = round.team1SongsLong || []
@@ -573,7 +971,69 @@ export function TournamentScriptManager({ onBack }: { onBack: () => void }) {
         })
       })
     }
+    // ----- 4 라운드 (1v1, 2곡 + 밴 + 지정곡 표시) -----
+    if (isRound4) {
+      const rawTeam1Songs = round.team1Songs2 || []
+      const rawTeam2Songs = round.team2Songs2 || []
+      const team1Banned = round.team1BannedSong4
+      const team2Banned = round.team2BannedSong4
 
+      // 밴 적용 후 플레이 가능한 곡들만
+      const team1Songs = rawTeam1Songs
+        .map((name, idx) => ({ name, idx }))
+        .filter(({ name }) => name && name !== team2Banned)
+
+      const team2Songs = rawTeam2Songs
+        .map((name, idx) => ({ name, idx }))
+        .filter(({ name }) => name && name !== team1Banned)
+
+      // 팀1 곡들
+      team1Songs.forEach(({ name, idx }) => {
+        const info = getSongInfoByField("team1Songs2", idx)
+        songs.push({
+          team: data.team1.name,
+          player: team1Players[0] || "",   // 4라운드는 1명
+          songName: name,
+          info,
+          isStrategy: false,
+        })
+      })
+
+      // 팀2 곡들
+      team2Songs.forEach(({ name, idx }) => {
+        const info = getSongInfoByField("team2Songs2", idx)
+        songs.push({
+          team: data.team2.name,
+          player: team2Players[0] || "",
+          songName: name,
+          info,
+          isStrategy: false,
+        })
+      })
+
+      // 주최측 지정곡도 카드에 포함하고 싶다면 (선택 사항)
+      if (round.stage3DesignatedSong) {
+        const info = data.songInfoMap[`round${roundIdx}_stage3DesignatedSong`] || null
+        songs.push({
+          team: data.team1.name,
+          player: "지정곡",
+          songName: round.stage3DesignatedSong,
+          info,
+          isStrategy: false,
+        })
+      }
+
+      if (round.stage4DesignatedSong) {
+        const info = data.songInfoMap[`round${roundIdx}_stage4DesignatedSong`] || null
+        songs.push({
+          team: data.team2.name,
+          player: "지정곡",
+          songName: round.stage4DesignatedSong,
+          info,
+          isStrategy: false,
+        })
+      }
+    }
 
     if (songs.length === 0) {
       setNotification({ type: "error", message: "표시할 곡이 없습니다." })
@@ -590,7 +1050,9 @@ export function TournamentScriptManager({ onBack }: { onBack: () => void }) {
           console.log("[v0] Image load failed, using placeholder", src)
           resolve(null)
         }
-        img.src = src
+        img.src = src.startsWith("data:")
+          ? src
+          : `/api/image-proxy?url=${encodeURIComponent(src)}`
       })
     }
 
@@ -605,33 +1067,162 @@ export function TournamentScriptManager({ onBack }: { onBack: () => void }) {
       }),
     )
 
-    // 5. 캔버스에 그리기 – 팀별 좌/우 컬럼 고정
-    const cardWidth = 360
-    const cardHeight = 110
-    const jacketSize = 90
-    const padding = 12
+    jacketsRef.current = jacketImages
+    setCurrentSongsForRound(songs)
+    setSelectedSongIndex(songs.length > 0 ? 0 : null)
 
-    // 팀별로 곡 분리
+    // 5. 캔버스에 그리기 
+    const cardWidth = 540
+    const cardHeight = 190
+    const jacketSize = 150
+    const padding = 28
+
     const team1SongsForLayout = songs.filter((s) => s.team === data.team1.name)
     const team2SongsForLayout = songs.filter((s) => s.team === data.team2.name)
     const rows = Math.max(team1SongsForLayout.length, team2SongsForLayout.length)
 
     const canvas = document.createElement("canvas")
-    canvas.width = 2 * cardWidth + padding * 3   // 왼쪽 카드 + 오른쪽 카드 + 패딩
-    canvas.height = rows * cardHeight + padding * (rows + 1) + 50
+    canvas.width = 2 * cardWidth + padding * 3 // 왼쪽 카드 + 오른쪽 카드 + 패딩
+    canvas.height = rows * cardHeight + padding * (rows + 1) + 100
 
     const ctx = canvas.getContext("2d")
     if (!ctx) return
 
-    // 배경
-    ctx.fillStyle = "#1a1a2e"
+
+    const bgGradient = ctx.createLinearGradient(0, 0, 0, canvas.height)
+    bgGradient.addColorStop(0, "#020617")
+    bgGradient.addColorStop(0.5, "#020617")
+    bgGradient.addColorStop(1, "#111827")
+    ctx.fillStyle = bgGradient
     ctx.fillRect(0, 0, canvas.width, canvas.height)
 
-    // 타이틀
-    ctx.fillStyle = "#ffffff"
-    ctx.font = "bold 24px sans-serif"
+    // 중앙 네온 구분선 (팀 VS 팀 느낌)
+    ctx.save()
+    ctx.strokeStyle = "#22d3ee"
+    ctx.lineWidth = 2
+    ctx.setLineDash([10, 6])
+    ctx.beginPath()
+    ctx.moveTo(canvas.width / 2, 60)
+    ctx.lineTo(canvas.width / 2, canvas.height - 24)
+    ctx.stroke()
+    ctx.restore()
+
+    // 상단 타이틀
+    ctx.fillStyle = "#e5e7eb"
+    ctx.font = "bold 26px system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
     ctx.textAlign = "center"
-    ctx.fillText(`${roundIdx + 1}라운드 선곡 목록`, canvas.width / 2, 35)
+    ctx.textBaseline = "top"
+    ctx.fillText(`${roundIdx + 1}라운드 선곡 목록`, canvas.width / 2, 18)
+
+    // 팀 이름 헤더 (좌/우 상단)
+    ctx.font = "bold 16px system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+    ctx.textAlign = "left"
+    ctx.fillStyle = "#60a5fa" // 팀1 파란색
+    const col1X = padding
+    const col2X = padding * 2 + cardWidth
+
+    ctx.fillText(data.team1.name || "TEAM 1", col1X + 12, 52)
+    ctx.fillStyle = "#f97373" // 팀2 빨간색
+    ctx.fillText(data.team2.name || "TEAM 2", col2X + 12, 52)
+
+    // 팀 이름 아래 얇은 네온 라인
+    ctx.save()
+    ctx.lineWidth = 3
+    ctx.shadowBlur = 12
+    ctx.shadowColor = "#22d3ee"
+
+    ctx.beginPath()
+    ctx.strokeStyle = "#2563eb"
+    ctx.moveTo(col1X + 10, 74)
+    ctx.lineTo(col1X + cardWidth - 10, 74)
+    ctx.stroke()
+
+    ctx.beginPath()
+    ctx.strokeStyle = "#ef4444"
+    ctx.moveTo(col2X + 10, 74)
+    ctx.lineTo(col2X + cardWidth - 10, 74)
+    ctx.stroke()
+
+    ctx.restore()
+    // 곡 제목에서 끝의 난이도 꼬리표(예: " MXM", " EXH") 제거
+    const stripDifficultyFromTitle = (title: string, song: SongEntry): string => {
+      if (!title) return ""
+      if (!song.info?.type) return title
+
+      const typeUpper = song.info.type.toUpperCase().trim()   // EXH, MXM 등
+      const suffix = " " + typeUpper
+
+      if (title.toUpperCase().endsWith(suffix)) {
+        return title.slice(0, -suffix.length)
+      }
+      return title
+    }
+
+    // 텍스트를 wrap 하면서 필요한 줄 수 측정 (줄수 제한 X)
+    const wrapTextUnlimited = (
+      ctx: CanvasRenderingContext2D,
+      text: string,
+      maxWidth: number,
+    ): string[] => {
+      const words = text.split(" ")
+      const lines: string[] = []
+      let currentLine = ""
+
+      for (let i = 0; i < words.length; i++) {
+        const testLine = currentLine ? currentLine + " " + words[i] : words[i]
+        const { width } = ctx.measureText(testLine)
+        if (width > maxWidth && currentLine) {
+          lines.push(currentLine)
+          currentLine = words[i]
+        } else {
+          currentLine = testLine
+        }
+      }
+      if (currentLine) lines.push(currentLine)
+      return lines
+    }
+
+    // 곡 제목을 2줄 안에 모두 보여줄 때까지 폰트를 줄이는 함수
+    const drawAutoFitTitle = (
+      ctx: CanvasRenderingContext2D,
+      text: string,
+      x: number,
+      y: number,
+      maxWidth: number,
+      maxLines: number,
+      maxFontSize: number,
+      minFontSize: number,
+    ): { fontSize: number; lineCount: number; totalHeight: number } => {
+      if (!text) return { fontSize: maxFontSize, lineCount: 0, totalHeight: 0 }
+
+      let chosenFontSize = minFontSize
+      let chosenLines: string[] = [text]
+
+      for (let fontSize = maxFontSize; fontSize >= minFontSize; fontSize--) {
+        ctx.font = `bold ${fontSize}px system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif`
+        const lines = wrapTextUnlimited(ctx, text, maxWidth)
+        if (lines.length <= maxLines) {
+          chosenFontSize = fontSize
+          chosenLines = lines
+          break
+        }
+      }
+
+      ctx.font = `bold ${chosenFontSize}px system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif`
+      const lineHeight = chosenFontSize + 4
+      const totalHeight = chosenLines.length * lineHeight
+
+      chosenLines.forEach((line, index) => {
+        if (index >= maxLines) return
+        ctx.fillText(line, x, y + index * lineHeight)
+      })
+
+      return {
+        fontSize: chosenFontSize,
+        lineCount: Math.min(chosenLines.length, maxLines),
+        totalHeight,
+      }
+    }
 
     // songs 배열에서 해당 SongEntry 의 자켓 이미지를 찾아오는 헬퍼
     const getJacketForSong = (song: SongEntry): HTMLImageElement | null => {
@@ -640,111 +1231,164 @@ export function TournamentScriptManager({ onBack }: { onBack: () => void }) {
       return jacketImages[idx]
     }
 
-    // 실제 카드 하나를 그리는 헬퍼 (기존 for문 안 카드 그리기 코드 그대로 옮김)
+    // 긴 텍스트를 여러 줄로 나누는 헬퍼 (… 없이 줄바꿈, 최대 2줄)
+    const drawMultilineText = (
+      ctx: CanvasRenderingContext2D,
+      text: string,
+      x: number,
+      y: number,
+      maxWidth: number,
+      lineHeight: number,
+      maxLines: number,
+    ) => {
+      if (!text) return
+      const words = text.split(" ")
+      const lines: string[] = []
+      let currentLine = ""
+
+      for (let i = 0; i < words.length; i++) {
+        const testLine = currentLine ? currentLine + " " + words[i] : words[i]
+        const { width } = ctx.measureText(testLine)
+        if (width > maxWidth && currentLine) {
+          lines.push(currentLine)
+          currentLine = words[i]
+          if (lines.length === maxLines - 1) {
+            break
+          }
+        } else {
+          currentLine = testLine
+        }
+      }
+      if (lines.length < maxLines && currentLine) {
+        lines.push(currentLine)
+      }
+
+      lines.slice(0, maxLines).forEach((line, idx) => {
+        ctx.fillText(line, x, y + idx * lineHeight)
+      })
+    }
+
+    // 실제 카드 하나를 그리는 헬퍼 – BPL 스타일 카드
     const drawSongCard = (
+      ctx: CanvasRenderingContext2D,
       song: SongEntry,
       x: number,
       y: number,
       jacketImg: HTMLImageElement | null,
     ) => {
-      // 카드 배경
-      ctx.fillStyle = song.isStrategy ? "#3d2066" : "#2d2d44"
+      // 카드 외곽 네온 보더
+      ctx.save()
       ctx.beginPath()
-      ctx.roundRect(x, y, cardWidth, cardHeight, 8)
+      ctx.roundRect(x, y, cardWidth, cardHeight, 16)
+
+      // 네온 그림자
+      ctx.shadowColor = song.team === data.team1.name ? "#3b82f6" : "#f97373"
+      ctx.shadowBlur = 18
+      ctx.strokeStyle = "rgba(148, 163, 184, 0.6)"
+      ctx.lineWidth = 2
+      ctx.stroke()
+      ctx.restore()
+
+      // 카드 내부 배경 (살짝 그라디언트)
+      const innerGradient = ctx.createLinearGradient(x, y, x + cardWidth, y + cardHeight)
+      innerGradient.addColorStop(0, "rgba(15, 23, 42, 0.95)")
+      innerGradient.addColorStop(1, "rgba(17, 24, 39, 0.9)")
+      ctx.fillStyle = innerGradient
+      ctx.beginPath()
+      ctx.roundRect(x, y, cardWidth, cardHeight, 16)
       ctx.fill()
 
-      // 팀 색 바
+      // 팀 색 좌측 바
       ctx.fillStyle = song.team === data.team1.name ? "#3b82f6" : "#ef4444"
       ctx.beginPath()
-      ctx.roundRect(x, y, 6, cardHeight, [8, 0, 0, 8] as any)
+      ctx.roundRect(x, y, 8, cardHeight, [16, 0, 0, 16] as any)
       ctx.fill()
 
-      const jacketX = x + 16
+      const jacketX = x + 22
       const jacketY = y + (cardHeight - jacketSize) / 2
 
-      // 자켓 이미지
+      // 자켓 이미지 (더 크게, 비중↑)
       if (jacketImg) {
         ctx.save()
         ctx.beginPath()
-        ctx.roundRect(jacketX, jacketY, jacketSize, jacketSize, 6)
+        ctx.roundRect(jacketX, jacketY, jacketSize, jacketSize, 10)
         ctx.clip()
         ctx.drawImage(jacketImg, jacketX, jacketY, jacketSize, jacketSize)
         ctx.restore()
       } else {
         // 플레이스홀더
         const gradient = ctx.createLinearGradient(jacketX, jacketY, jacketX + jacketSize, jacketY + jacketSize)
-        gradient.addColorStop(0, "#4a4a6a")
-        gradient.addColorStop(1, "#2a2a4a")
+        gradient.addColorStop(0, "#4f46e5")
+        gradient.addColorStop(1, "#a855f7")
         ctx.fillStyle = gradient
         ctx.beginPath()
-        ctx.roundRect(jacketX, jacketY, jacketSize, jacketSize, 6)
+        ctx.roundRect(jacketX, jacketY, jacketSize, jacketSize, 10)
         ctx.fill()
 
-        ctx.fillStyle = "#888"
-        ctx.font = "32px sans-serif"
+        ctx.fillStyle = "#e5e7eb"
+        ctx.font = "40px system-ui, sans-serif"
         ctx.textAlign = "center"
         ctx.textBaseline = "middle"
         ctx.fillText("♪", jacketX + jacketSize / 2, jacketY + jacketSize / 2)
       }
 
       // 텍스트 영역
-      const textX = jacketX + jacketSize + 12
-      const textMaxWidth = cardWidth - jacketSize - 44
+      const textX = jacketX + jacketSize + 16
+      const textMaxWidth = cardWidth - (textX - x) - 16
 
       // 선수 이름
       ctx.fillStyle = "#9ca3af"
-      ctx.font = "12px sans-serif"
+      ctx.font = "12px system-ui, sans-serif"
       ctx.textAlign = "left"
       ctx.textBaseline = "top"
-      ctx.fillText(song.player || "선수", textX, y + 12)
+      ctx.fillText(song.player || "PLAYER", textX, y + 14)
 
-      // 곡명
-      ctx.fillStyle = "#ffffff"
-      ctx.font = "bold 14px sans-serif"
-      let songDisplayName = song.songName
-      while (ctx.measureText(songDisplayName).width > textMaxWidth && songDisplayName.length > 3) {
-        songDisplayName = songDisplayName.slice(0, -1)
-      }
-      if (songDisplayName !== song.songName) songDisplayName += "..."
-      ctx.fillText(songDisplayName, textX, y + 30)
+      // 곡명 (두 줄까지, 줄바꿈 / … 없음)
+      ctx.fillStyle = "#f9fafb"
+
+      // 곡 제목에서 끝의 " MXM", " EXH" 같은 꼬리표 제거
+      const rawTitle = song.songName || ""
+      const cleanTitle = stripDifficultyFromTitle(rawTitle, song)
+
+      // 최대 2줄 안에 전부 들어갈 때까지 폰트를 줄여가며 그리기
+      const titleTopY = y + 32
+      const { lineCount, fontSize, totalHeight } = drawAutoFitTitle(
+        ctx,
+        cleanTitle,
+        textX,
+        titleTopY,
+        textMaxWidth,
+        2,   // 최대 줄 수
+        24,  // 최대 폰트 크기 (조금 키움)
+        12,  // 최소 폰트 크기
+      )
 
       // 아티스트
-      let nextTextY = y + 50
+      let nextTextY = titleTopY + totalHeight + 4
       if (song.info?.artist) {
         ctx.fillStyle = "#9ca3af"
-        ctx.font = "12px sans-serif"
-        let artistName = song.info.artist
-        while (ctx.measureText(artistName).width > textMaxWidth && artistName.length > 3) {
-          artistName = artistName.slice(0, -1)
-        }
-        if (artistName !== song.info.artist) artistName += "..."
-        ctx.fillText(artistName, textX, nextTextY)
-        nextTextY += 16
+        ctx.font = "12px system-ui, sans-serif"
+        drawMultilineText(ctx, song.info.artist, textX, nextTextY, textMaxWidth, 18, 1)
+        nextTextY += 20
       }
 
       // 날짜 (YYYY-MM-DD까지만)
       if (song.info?.date) {
         ctx.fillStyle = "#6b7280"
-        ctx.font = "11px sans-serif"
+        ctx.font = "11px system-ui, sans-serif"
 
         const rawDate = song.info.date
         const formattedDate = rawDate.includes("T") ? rawDate.split("T")[0] : rawDate.slice(0, 10)
-
-        let dateText = formattedDate
-        while (ctx.measureText(dateText).width > textMaxWidth && dateText.length > 3) {
-          dateText = dateText.slice(0, -1)
-        }
-        if (dateText !== formattedDate) dateText += "..."
-
-        ctx.fillText(dateText, textX, nextTextY)
-        nextTextY += 16
+        drawMultilineText(ctx, formattedDate, textX, nextTextY, textMaxWidth, 16, 1)
+        nextTextY += 18
       }
 
-      // 레벨/타입 뱃지
+      // 난이도/레벨 배지 (대문자, 네온)
       if (song.info?.level && song.info?.type) {
-        const badgeText = `${song.info.type} ${song.info.level}`
-        ctx.font = "bold 11px sans-serif"
-        const badgeWidth = ctx.measureText(badgeText).width + 12
+        const badgeText = `${song.info.type.toUpperCase()} ${song.info.level}`
+
+        ctx.font = "bold 12px system-ui, sans-serif"
+        const badgeWidth = ctx.measureText(badgeText).width + 14
 
         const typeColors: Record<string, string> = {
           NOV: "#6366f1",
@@ -757,48 +1401,57 @@ export function TournamentScriptManager({ onBack }: { onBack: () => void }) {
           VVD: "#a855f7",
           XCD: "#22c55e",
         }
-        ctx.fillStyle = typeColors[song.info.type] || "#6b7280"
-        const badgeY = nextTextY + 2
+
+        ctx.fillStyle = typeColors[song.info.type.toUpperCase()] || "#6b7280"
+
+        // 카드 하단에서 20px 위에 고정
+        const badgeY = y + cardHeight - 50
+
         ctx.beginPath()
-        ctx.roundRect(textX, badgeY, badgeWidth, 20, 4)
+        ctx.roundRect(textX, badgeY, badgeWidth, 22, 6)
         ctx.fill()
 
-        ctx.fillStyle = "#ffffff"
+        ctx.fillStyle = "#f9fafb"
         ctx.textBaseline = "middle"
-        ctx.fillText(badgeText, textX + 6, badgeY + 10)
+        ctx.fillText(badgeText, textX + 7, badgeY + 11)
       }
 
       // 스트래티지 라벨
       if (song.isStrategy) {
+        ctx.save()
         ctx.fillStyle = "#a855f7"
-        ctx.font = "bold 10px sans-serif"
+        ctx.font = "bold 11px system-ui, sans-serif"
         ctx.textAlign = "right"
-        ctx.fillText("STRATEGY", x + cardWidth - 12, y + 16)
+        ctx.shadowColor = "#a855f7"
+        ctx.shadowBlur = 10
+        ctx.fillText("STRATEGY", x + cardWidth - 14, y + 20)
+        ctx.restore()
         ctx.textAlign = "left"
       }
     }
 
     // 행 단위로 좌/우에 팀1/팀2 카드 배치
     for (let row = 0; row < rows; row++) {
-      const y = 50 + padding + row * (cardHeight + padding)
+      const y = 80 + padding + row * (cardHeight + padding)
 
       const songLeft = team1SongsForLayout[row]   // 팀1
       const songRight = team2SongsForLayout[row]  // 팀2
 
       if (songLeft) {
-        const xLeft = padding
-        drawSongCard(songLeft, xLeft, y, getJacketForSong(songLeft))
+        const xLeft = col1X
+        drawSongCard(ctx, songLeft, xLeft, y, getJacketForSong(songLeft))
       }
 
       if (songRight) {
-        const xRight = padding * 2 + cardWidth
-        drawSongCard(songRight, xRight, y, getJacketForSong(songRight))
+        const xRight = col2X
+        drawSongCard(ctx, songRight, xRight, y, getJacketForSong(songRight))
       }
     }
 
     setGeneratedImage(canvas.toDataURL("image/png"))
     setImageRoundIdx(roundIdx)
     setImageDialogOpen(true)
+
   }
 
 
@@ -913,6 +1566,24 @@ export function TournamentScriptManager({ onBack }: { onBack: () => void }) {
       })
     })
 
+    // 🔽 여기부터 추가: 연장전(overtime) 섹션 내보내기
+    rows.push(`overtime,roomNumber,${escapeCSV(data.overtime.roomNumber)},,,,,,`)
+
+    const overtimeInfo = data.songInfoMap["overtime_designatedSong"]
+    if (overtimeInfo) {
+      rows.push(
+        `overtime,designatedSong,${escapeCSV(data.overtime.designatedSong)},` +
+        `${escapeCSV(overtimeInfo.title)},${escapeCSV(overtimeInfo.artist)},${escapeCSV(overtimeInfo.jacket)},` +
+        `${overtimeInfo.level},${escapeCSV(overtimeInfo.type)},${escapeCSV(overtimeInfo.date)}`,
+      )
+    } else {
+      rows.push(`overtime,designatedSong,${escapeCSV(data.overtime.designatedSong)},,,,,,`)
+    }
+
+    rows.push(`overtime,team1Player,${escapeCSV(data.overtime.team1Player)},,,,,,`)
+    rows.push(`overtime,team2Player,${escapeCSV(data.overtime.team2Player)},,,,,,`)
+
+
     const csv = rows.join("\n")
     const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" }) // Add BOM for Excel
     const url = URL.createObjectURL(blob)
@@ -989,6 +1660,16 @@ export function TournamentScriptManager({ onBack }: { onBack: () => void }) {
               type: type?.trim() || "",
               date: date?.trim() || "",
             }
+          } else if (section === "overtime" && key === "designatedSong") {
+            // ✅ 연장전 지정곡 SongInfo 저장
+            newSongInfoMap["overtime_designatedSong"] = {
+              title: title.trim(),
+              artist: artist?.trim() || "",
+              jacket: jacket?.trim() || "",
+              level: Number.parseInt(level) || 0,
+              type: type?.trim() || "",
+              date: date?.trim() || "",
+            }
           }
         }
 
@@ -1044,6 +1725,17 @@ export function TournamentScriptManager({ onBack }: { onBack: () => void }) {
                 round[key] = value
               }
             }
+          }
+        } else if (section === "overtime") {
+          // 🔽 여기 추가
+          if (key === "roomNumber") {
+            newData.overtime.roomNumber = value
+          } else if (key === "designatedSong") {
+            newData.overtime.designatedSong = value
+          } else if (key === "team1Player") {
+            newData.overtime.team1Player = value
+          } else if (key === "team2Player") {
+            newData.overtime.team2Player = value
           }
         }
       })
@@ -1255,6 +1947,31 @@ ${filtered.map((song) => `* ${song}`).join("\n")}`
 종료 후 나오는 리절트 창 촬영 부탁드립니다.`
     }
   }
+  const generateOvertimeRecordingStartScript = () => {
+    return `# 연장전 녹화 시작 안내
+* 연장전 출전 선수분들 녹화 시작하셨으면 말씀 부탁드립니다.
+* 연장전 출전 선수분들 타건음 마이크 음소거 한번 더 확인 부탁드립니다.`
+  }
+
+  const generateOvertimeRecordingEndScript = () => {
+    return `# 연장전 녹화 종료 안내
+* 연장전 출전 선수분들 녹화 종료 부탁드립니다.
+* 녹화하신 영상을 https://drive.google.com/drive/folders/1HCiwJYMPH-sRQ0gxGQGj-PmeM2GRwHYi 으로 파일 이름을 **플레이어_연장전** 형식으로 수정하여 전송 부탁드립니다.
+-# 예시) 고갱_연장전`
+  }
+
+  const generateOvertimeScript = (data: TournamentData) => {
+    const song = data.overtime.designatedSong || "LubedeR"
+    const room = data.overtime.roomNumber || "219219"
+
+    return `# 연장전 안내
+* 양 팀의 세트 스코어가 동률이므로 연장전을 진행합니다.
+# 연장전 지정곡 : ${song}
+# 연장전 출전 선수 싱글배틀 방번호 ${room} 로 입장해주세요
+* 양 선수 모두 싱글 매치 진입후, **${song}** 을 골라주시고 2번째는 아무거나 골라주시기 바랍니다.
+* 2ND TRACK~FINAL TRACK의 경우 플레이 하셔도 무방하오나 최종 결과엔 반영되지 않습니다.
+  * 1ST TRACK 결과가 최종 결과에 반영됩니다.`
+  }
 
   const BanSelectDropdown = ({
     value,
@@ -1405,6 +2122,9 @@ ${filtered.map((song) => `* ${song}`).join("\n")}`
         <DialogContent className="max-w-2xl max-h-[80vh] overflow-visible">
           <DialogHeader>
             <DialogTitle>곡 검색</DialogTitle>
+            <DialogDescription className="sr-only">
+              대회에 사용할 곡을 검색하고 선택하는 창입니다.
+            </DialogDescription>
           </DialogHeader>
           <div className="flex gap-2 mb-4">
             <Input
@@ -1463,33 +2183,105 @@ ${filtered.map((song) => `* ${song}`).join("\n")}`
       </Dialog>
 
       <Dialog open={imageDialogOpen} onOpenChange={setImageDialogOpen}>
-        <DialogContent className="max-w-4xl">
+        <DialogContent
+          className="
+      w-full
+      max-w-[min(1100px,100vw-32px)]
+      max-h-[90vh]
+      overflow-y-auto
+    "
+        >
           <DialogHeader>
             <DialogTitle>{imageRoundIdx + 1}라운드 선곡 목록 이미지</DialogTitle>
+            <DialogDescription className="sr-only">
+              선택한 라운드의 선곡 목록 이미지를 확인하고 복사/다운로드할 수 있는 창입니다.
+            </DialogDescription>
           </DialogHeader>
-          <div className="flex justify-center overflow-auto">
-            {generatedImage ? (
-              <img
-                src={generatedImage}
-                alt="Generated Song List"
-                className="max-w-full border rounded"
-              />
-            ) : (
-              <canvas ref={canvasRef} className="max-w-full border rounded" />
-            )}
-          </div>
-          <div className="flex justify-end gap-2 mt-4">
-            <Button variant="outline" onClick={downloadImage}>
-              <Download className="h-4 w-4 mr-2" />
-              다운로드
-            </Button>
-            <Button onClick={copyImageToClipboard}>
-              {copiedId === "image" ? <Check className="h-4 w-4 mr-2" /> : <Copy className="h-4 w-4 mr-2" />}
-              클립보드에 복사
-            </Button>
+
+          {/* 본문 영역 */}
+          {/* flex-1 / overflow-hidden 제거해서 내용이 필요하면 아래로 더 늘어날 수 있게 */}
+          <div className="flex flex-col gap-4">
+            {/* 위: 전체 이미지 (스크롤 가능) */}
+            <div className="flex justify-center overflow-auto max-h-[60vh]">
+              {generatedImage ? (
+                <img
+                  src={generatedImage}
+                  alt="Generated Song List"
+                  className="max-w-full border rounded"
+                />
+              ) : (
+                <canvas ref={canvasRef} className="max-w-full border rounded" />
+              )}
+            </div>
+
+            {/* 아래: 단일 카드 선택 + 버튼들 */}
+            {/* 좁은 화면에서 줄바꿈 되도록 flex-wrap + w-full 추가 */}
+            <div className="shrink-0 w-full flex flex-col gap-3 md:flex-row md:flex-wrap md:items-center md:justify-between">
+              <div className="flex items-center gap-2">
+                <Label className="text-xs">단일 카드 다운로드 대상곡</Label>
+
+                {currentSongsForRound.length > 0 ? (
+                  <Select
+                    value={
+                      selectedSongIndex !== null
+                        ? String(selectedSongIndex)
+                        : undefined
+                    }
+                    onValueChange={(v) => setSelectedSongIndex(Number(v))}
+                  >
+                    <SelectTrigger className="w-64 h-8 text-xs">
+                      <SelectValue placeholder="곡 선택" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {currentSongsForRound.map((s, idx) => (
+                        <SelectItem key={idx} value={String(idx)}>
+                          {`${s.team} / ${s.player || "??"} / ${s.songName}`}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <span className="text-xs text-muted-foreground">
+                    선택 가능한 곡이 없습니다
+                  </span>
+                )}
+              </div>
+
+              {/* 버튼 묶음: flex-wrap + w-full 로 오른쪽이 잘리지 않게 */}
+              <div className="flex flex-wrap justify-end gap-2 w-full md:w-auto">
+                <Button variant="outline" onClick={downloadImage}>
+                  <Download className="h-4 w-4 mr-2" />
+                  전체 이미지 다운로드
+                </Button>
+
+                <Button
+                  variant="outline"
+                  onClick={handleDownloadSingleCard}
+                  disabled={
+                    currentSongsForRound.length === 0 ||
+                    selectedSongIndex === null
+                  }
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  선택 곡 카드 다운로드
+                </Button>
+
+                <Button onClick={copyImageToClipboard}>
+                  {copiedId === "image" ? (
+                    <Check className="h-4 w-4 mr-2" />
+                  ) : (
+                    <Copy className="h-4 w-4 mr-2" />
+                  )}
+                  클립보드에 복사
+                </Button>
+              </div>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
+
+
+
 
       <Tabs defaultValue="teams" className="space-y-4">
         <TabsList className="grid w-full grid-cols-6">
@@ -1498,6 +2290,7 @@ ${filtered.map((song) => `* ${song}`).join("\n")}`
           <TabsTrigger value="round2">2라운드</TabsTrigger>
           <TabsTrigger value="round3">3라운드</TabsTrigger>
           <TabsTrigger value="round4">4라운드</TabsTrigger>
+          <TabsTrigger value="overtime">연장전</TabsTrigger>
           <TabsTrigger value="common">공통 멘트</TabsTrigger>
         </TabsList>
 
@@ -2184,6 +2977,113 @@ ${filtered.map((song) => `* ${song}`).join("\n")}`
               <ScriptCard title="엔트리 공개" script={generateEntryScript(3)} id="r4-entry" />
               <ScriptCard title="아레나 입장 안내" script={generateArenaEntryScript(3)} id="r4-arena" />
               <ScriptCard title="녹화 종료 안내" script={generateRecordingEndScript(3)} id="r4-rec-end" />
+            </div>
+          </div>
+        </TabsContent>
+        {/* Overtime Tab (연장전) */}
+        <TabsContent value="overtime" className="space-y-4">
+          <div className="grid lg:grid-cols-2 gap-4">
+            {/* 왼쪽: 설정 입력 */}
+            <div className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">연장전 설정</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label>방 번호</Label>
+                      <Input
+                        value={data.overtime.roomNumber}
+                        onChange={(e) =>
+                          setData((prev) => ({
+                            ...prev,
+                            overtime: { ...prev.overtime, roomNumber: e.target.value },
+                          }))
+                        }
+                        placeholder="219219"
+                      />
+                    </div>
+                    <div>
+                      <Label>연장전 지정곡 (클릭하여 검색)</Label>
+                      <SongInputField
+                        value={data.overtime.designatedSong || ""}
+                        placeholder="LubedeR"
+                        onClick={openOvertimeSongSearch}
+                        onClear={clearOvertimeDesignatedSong}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label>팀 {data.team1.name || "1팀"} 연장전 출전 선수</Label>
+                      <Select
+                        value={data.overtime.team1Player}
+                        onValueChange={(value) =>
+                          setData((prev) => ({
+                            ...prev,
+                            overtime: { ...prev.overtime, team1Player: value },
+                          }))
+                        }
+                      >
+                        <SelectTrigger className="h-8 text-sm">
+                          <SelectValue placeholder="선수 선택" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {data.team1.players.filter(Boolean).map((player, idx) => (
+                            <SelectItem key={idx} value={player}>
+                              {player}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label>팀 {data.team2.name || "2팀"} 연장전 출전 선수</Label>
+                      <Select
+                        value={data.overtime.team2Player}
+                        onValueChange={(value) =>
+                          setData((prev) => ({
+                            ...prev,
+                            overtime: { ...prev.overtime, team2Player: value },
+                          }))
+                        }
+                      >
+                        <SelectTrigger className="h-8 text-sm">
+                          <SelectValue placeholder="선수 선택" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {data.team2.players.filter(Boolean).map((player, idx) => (
+                            <SelectItem key={idx} value={player}>
+                              {player}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* 오른쪽: 스크립트 카드들 */}
+            <div className="space-y-3">
+              <ScriptCard
+                title="연장전 안내"
+                script={generateOvertimeScript(data)}
+                id="ot-main"
+              />
+              <ScriptCard
+                title="연장전 녹화 시작 안내"
+                script={generateOvertimeRecordingStartScript()}
+                id="ot-rec-start"
+              />
+              <ScriptCard
+                title="연장전 녹화 종료 안내"
+                script={generateOvertimeRecordingEndScript()}
+                id="ot-rec-end"
+              />
             </div>
           </div>
         </TabsContent>
