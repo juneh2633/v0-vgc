@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState, useCallback, useMemo, useRef } from "react"
+import { useEffect, useState, useCallback, useMemo, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -22,6 +22,22 @@ const fetcher = async (url: string) => {
   if (!res.ok) throw new Error(`Failed to fetch: ${res.status}`)
   return res.json()
 }
+
+
+
+// 카드 디자인 기준 (디자이너 스펙)
+const BASE_CARD_WIDTH = 1080
+const BASE_CARD_HEIGHT = 380
+
+const CARD_BORDER_RADIUS = 20
+const JACKET_BASE_SIZE = 300
+const JACKET_RADIUS = 18
+const BADGE_RADIUS = 13
+
+// 폰트 (일어: Meiryo, 영어: Arial)
+const CARD_FONT_FAMILY =
+  '"Meiryo", Arial, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
+
 
 interface SongInfo {
   title: string
@@ -209,11 +225,25 @@ export function drawSongCard(
   options: {
     cardWidth: number
     cardHeight: number
-    jacketSize: number
+    jacketSize: number // ← 무시하고 디자이너 스펙 기준으로 재계산
     team1Name: string
+    backgroundImg?: HTMLImageElement | null // 1080x380 카드 배경 이미지 (옵션)
   },
 ) {
-  const { cardWidth, cardHeight, jacketSize, team1Name } = options
+  const { cardWidth, cardHeight, team1Name, backgroundImg } = options
+
+  // 1080x380 기준으로 스케일 계산
+  const scaleX = cardWidth / BASE_CARD_WIDTH
+  const scaleY = cardHeight / BASE_CARD_HEIGHT
+  const s = Math.min(scaleX, scaleY)
+
+  const isTeam1 = song.team === team1Name
+
+  // 실제 사용할 사이즈들 (스케일 적용)
+  const borderRadius = CARD_BORDER_RADIUS * s
+  const jacketSize = JACKET_BASE_SIZE * s
+  const jacketRadius = JACKET_RADIUS * s
+  const badgeRadius = BADGE_RADIUS * s
 
   // 곡 제목에서 끝의 난이도 꼬리표(예: " MXM", " EXH") 제거
   const stripDifficultyFromTitle = (title: string, song: SongEntry): string => {
@@ -253,49 +283,6 @@ export function drawSongCard(
     return lines
   }
 
-  // 제목 폰트 자동 축소 + 최대 줄 수 제한
-  const drawAutoFitTitle = (
-    ctx: CanvasRenderingContext2D,
-    text: string,
-    x: number,
-    y: number,
-    maxWidth: number,
-    maxLines: number,
-    maxFontSize: number,
-    minFontSize: number,
-  ): { fontSize: number; lineCount: number; totalHeight: number } => {
-    if (!text) return { fontSize: maxFontSize, lineCount: 0, totalHeight: 0 }
-
-    let chosenFontSize = minFontSize
-    let chosenLines: string[] = [text]
-
-    for (let fontSize = maxFontSize; fontSize >= minFontSize; fontSize--) {
-      ctx.font = `bold ${fontSize}px system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif`
-      const lines = wrapTextUnlimited(ctx, text, maxWidth)
-      if (lines.length <= maxLines) {
-        chosenFontSize = fontSize
-        chosenLines = lines
-        break
-      }
-    }
-
-    ctx.font = `bold ${chosenFontSize}px system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif`
-    const lineHeight = chosenFontSize + 4
-    const totalHeight = chosenLines.length * lineHeight
-
-    chosenLines.forEach((line, index) => {
-      if (index >= maxLines) return
-      ctx.fillText(line, x, y + index * lineHeight)
-    })
-
-    return {
-      fontSize: chosenFontSize,
-      lineCount: Math.min(chosenLines.length, maxLines),
-      totalHeight,
-    }
-  }
-
-  // 여러 줄 텍스트 (… 없이 줄바꿈)
   const drawMultilineText = (
     ctx: CanvasRenderingContext2D,
     text: string,
@@ -330,160 +317,276 @@ export function drawSongCard(
     })
   }
 
-  const isTeam1 = song.team === team1Name
+  const drawSingleLineWithEllipsis = (
+    text: string,
+    x: number,
+    y: number,
+    maxWidth: number,
+    fontSize: number,
+    color: string,
+  ) => {
+    ctx.font = `bold ${fontSize}px ${CARD_FONT_FAMILY}`
+    ctx.fillStyle = color
+    ctx.textAlign = "left"
+    ctx.textBaseline = "top"
 
-  // 카드 외곽 네온 보더
+    const ellipsis = "…"
+    const ellipsisWidth = ctx.measureText(ellipsis).width
+    const fullWidth = ctx.measureText(text).width
+
+    // 1) 전체가 들어가는 경우
+    if (fullWidth <= maxWidth) {
+      ctx.fillText(text, x, y)
+      return
+    }
+
+    // 2) 이분 탐색 시작
+    let left = 0
+    let right = text.length - 1
+    let result = ""
+
+    while (left <= right) {
+      const mid = Math.floor((left + right) / 2)
+      const substr = text.slice(0, mid)
+      const width = ctx.measureText(substr).width + ellipsisWidth
+
+      if (width <= maxWidth) {
+        result = substr + ellipsis     // mid 길이는 OK → 정답 후보
+        left = mid + 1
+      } else {
+        right = mid - 1
+      }
+    }
+
+    ctx.fillText(result, x, y)
+  }
+  /**
+   * 한 줄 텍스트를 maxWidth 안에 맞춰서 말줄임(...) 처리 (이분 탐색)
+   */
+  const drawSmartEllipsis = (
+    ctx: CanvasRenderingContext2D,
+    text: string,
+    x: number,
+    y: number,
+    maxWidth: number,
+    font: string,
+    color: string
+  ) => {
+    ctx.font = font
+    ctx.fillStyle = color
+    ctx.textAlign = "left"
+    ctx.textBaseline = "top"
+
+    const ellipsis = "…"
+    const ellipsisWidth = ctx.measureText(ellipsis).width
+    const fullWidth = ctx.measureText(text).width
+
+    // 1) 전체가 들어가는 경우
+    if (fullWidth <= maxWidth) {
+      ctx.fillText(text, x, y)
+      return
+    }
+
+    // 2) 이분 탐색 시작
+    let left = 0
+    let right = text.length - 1
+    let result = ""
+
+    while (left <= right) {
+      const mid = Math.floor((left + right) / 2)
+      const substr = text.slice(0, mid)
+      const width = ctx.measureText(substr).width + ellipsisWidth
+
+      if (width <= maxWidth) {
+        result = substr + ellipsis     // mid 길이는 OK → 정답 후보
+        left = mid + 1
+      } else {
+        right = mid - 1
+      }
+    }
+
+    ctx.fillText(result, x, y)
+  }
+
+
+  // === 1. 카드 외곽 / 배경 ===
   ctx.save()
   ctx.beginPath()
-  ctx.roundRect(x, y, cardWidth, cardHeight, 16)
+  ctx.roundRect(x, y, cardWidth, cardHeight, borderRadius)
 
+  if (backgroundImg) {
+    // 디자이너가 준 1080x380 배경 이미지 사용
+    ctx.clip()
+    ctx.drawImage(backgroundImg, x, y, cardWidth, cardHeight)
+  } else {
+    // 배경 이미지 없으면 기존 그라디언트 사용
+    const innerGradient = ctx.createLinearGradient(x, y, x + cardWidth, y + cardHeight)
+    innerGradient.addColorStop(0, "rgba(15, 23, 42, 0.95)")
+    innerGradient.addColorStop(1, "rgba(17, 24, 39, 0.9)")
+    ctx.fillStyle = innerGradient
+    ctx.fill()
+  }
+  ctx.restore()
+
+  // 네온 보더
+  ctx.save()
+  ctx.beginPath()
+  ctx.roundRect(x, y, cardWidth, cardHeight, borderRadius)
   ctx.shadowColor = isTeam1 ? "#3b82f6" : "#f97373"
-  ctx.shadowBlur = 18
+  ctx.shadowBlur = 18 * s
   ctx.strokeStyle = "rgba(148, 163, 184, 0.6)"
-  ctx.lineWidth = 2
+  ctx.lineWidth = 2 * s
   ctx.stroke()
   ctx.restore()
 
-  // 카드 내부 배경
-  const innerGradient = ctx.createLinearGradient(x, y, x + cardWidth, y + cardHeight)
-  innerGradient.addColorStop(0, "rgba(15, 23, 42, 0.95)")
-  innerGradient.addColorStop(1, "rgba(17, 24, 39, 0.9)")
-  ctx.fillStyle = innerGradient
-  ctx.beginPath()
-  ctx.roundRect(x, y, cardWidth, cardHeight, 16)
-  ctx.fill()
-
-  // 팀 색 좌측 바
-  ctx.fillStyle = isTeam1 ? "#3b82f6" : "#ef4444"
-  ctx.beginPath()
-  ctx.roundRect(x, y, 8, cardHeight, [16, 0, 0, 16] as any)
-  ctx.fill()
-
-  const jacketX = x + 22
+  // === 2. 자켓 (300x300, radius 18px 기준) ===
+  const jacketX = x + 45 * scaleX // 디자이너가 좌표 안 준 부분이라 적당히 40px 여백
   const jacketY = y + (cardHeight - jacketSize) / 2
 
-  // 자켓
   if (jacketImg) {
     ctx.save()
     ctx.beginPath()
-    ctx.roundRect(jacketX, jacketY, jacketSize, jacketSize, 10)
+    ctx.roundRect(jacketX, jacketY, jacketSize, jacketSize, jacketRadius)
     ctx.clip()
     ctx.drawImage(jacketImg, jacketX, jacketY, jacketSize, jacketSize)
     ctx.restore()
   } else {
-    // 플레이스홀더
     const gradient = ctx.createLinearGradient(jacketX, jacketY, jacketX + jacketSize, jacketY + jacketSize)
     gradient.addColorStop(0, "#4f46e5")
     gradient.addColorStop(1, "#a855f7")
     ctx.fillStyle = gradient
     ctx.beginPath()
-    ctx.roundRect(jacketX, jacketY, jacketSize, jacketSize, 10)
+    ctx.roundRect(jacketX, jacketY, jacketSize, jacketSize, jacketRadius)
     ctx.fill()
 
     ctx.fillStyle = "#e5e7eb"
-    ctx.font = "40px system-ui, sans-serif"
+    ctx.font = `${40 * s}px ${CARD_FONT_FAMILY}`
     ctx.textAlign = "center"
     ctx.textBaseline = "middle"
     ctx.fillText("♪", jacketX + jacketSize / 2, jacketY + jacketSize / 2)
   }
 
-  // 텍스트 영역
-  const textX = jacketX + jacketSize + 16
-  const textMaxWidth = cardWidth - (textX - x) - 16
+  // === 3. 텍스트 영역 좌표 (디자이너 스펙 기준) ===
+  // 악곡명 : W 547px / H 37px | X 379 / Y 72
+  // 작곡가명 : W 137px / H 21px | X 379 / Y 136
+  // 수록일 : W 111px / H 18px | X 379 / Y 180
+  // 난이도 : W 173px / H 44px | X 379 / Y 280
 
-  // 선수 이름
-  // ctx.fillStyle = "#9ca3af"
-  // ctx.font = "12px system-ui, sans-serif"
-  // ctx.textAlign = "left"
-  // ctx.textBaseline = "top"
-  // ctx.fillText(song.player || "PLAYER", textX, y + 14)
 
-  // 곡명
+  const composerAreaX = x + 379 * scaleX
+  const composerAreaY = y + 136 * scaleY
+  const composerAreaW = 547 * scaleX
+
+  const dateAreaX = x + 379 * scaleX
+  const dateAreaY = y + 180 * scaleY
+  const dateAreaW = 111 * scaleX
+
+
+  // === 4. 곡명 ===
+  ctx.textAlign = "left"
+  ctx.textBaseline = "top"
   ctx.fillStyle = "#f9fafb"
+
   const rawTitle = song.songName || ""
   const cleanTitle = stripDifficultyFromTitle(rawTitle, song)
-  const titleTopY = y + 54
-  const { totalHeight } = drawAutoFitTitle(
-    ctx,
+
+  // 디자이너가 준 좌표 기준 (1080×380)
+  // 악곡명 : W 547 / H 37 | X 379 / Y 72
+  const titleX = x + 379 * s
+  const titleY = y + 72 * s
+  const titleW = 547 * s
+
+  const TITLE_FONT_SIZE = 37 * s  // 기존보다 살짝 크게
+
+  drawSingleLineWithEllipsis(
     cleanTitle,
-    textX,
-    titleTopY,
-    textMaxWidth,
-    2,
-    24,
-    12,
+    titleX,
+    titleY,
+    titleW,
+    TITLE_FONT_SIZE,
+    "#FFFFFF",
   )
 
-  // 아티스트
-  let nextTextY = titleTopY + totalHeight + 4 -8
+  // === 5. 작곡가명 ===
   if (song.info?.artist) {
-    ctx.fillStyle = "#9ca3af"
-    ctx.font = "12px system-ui, sans-serif"
-    drawMultilineText(ctx, song.info.artist, textX, nextTextY, textMaxWidth, 18, 1)
-    nextTextY += 20
+    ctx.fillStyle = "#F1EFEA"
+    ctx.font = `bold ${21 * s}px ${CARD_FONT_FAMILY}` // H 21px 정도
+    // drawMultilineText(ctx, song.info.artist, composerAreaX, composerAreaY, composerAreaW, 20 * s, 1)
+    drawSmartEllipsis(
+      ctx,
+      song.info.artist,
+      composerAreaX,
+      composerAreaY,
+      composerAreaW,
+      ctx.font,
+      "#F1EFEA"
+    )
   }
 
-  // 날짜
+  // === 6. 수록일 ===
   if (song.info?.date) {
-    ctx.fillStyle = "#6b7280"
-    ctx.font = "11px system-ui, sans-serif"
+    ctx.fillStyle = "#FFDCAA"
+    ctx.font = `bold ${18 * s}px ${CARD_FONT_FAMILY}` // H 18px 정도
+
     const rawDate = song.info.date
     const formattedDate = rawDate.includes("T") ? rawDate.split("T")[0] : rawDate.slice(0, 10)
-    drawMultilineText(ctx, formattedDate, textX, nextTextY, textMaxWidth, 16, 1)
-    nextTextY += 18
+    drawMultilineText(ctx, formattedDate, dateAreaX, dateAreaY, dateAreaW, 18 * s, 1)
   }
 
-  // 난이도/레벨 배지
+  // === 7. 난이도 배지 ===
   if (song.info?.level && song.info?.type) {
     const badgeText = `${song.info.type.toUpperCase()} ${song.info.level}`
-    ctx.font = "bold 12px system-ui, sans-serif"
-    const badgeWidth = ctx.measureText(badgeText).width + 14
 
-    const typeColors: Record<string, string> = {
-      NOV: "#6366f1",
-      ADV: "#eab308",
-      EXH: "#ef4444",
-      MXM: "#ec4899",
-      INF: "#ec4899",
-      GRV: "#f97316",
-      HVN: "#06b6d4",
-      VVD: "#a855f7",
-      XCD: "#22c55e",
-    }
+    // 폰트 크게
+    const BADGE_FONT_SIZE = 22 * s
+    ctx.font = `bold ${BADGE_FONT_SIZE}px ${CARD_FONT_FAMILY}`
 
-    // ctx.fillStyle = typeColors[song.info.type.toUpperCase()] || "#6b7280"
+    const textMetrics = ctx.measureText(badgeText)
+    const badgePaddingX = 24 * s
+    const badgePaddingY = 12 * s
+
+    // 텍스트 길이에 따라 넉넉하게, 최소 폭도 보장
+    const badgeWidth = Math.max(220 * s, textMetrics.width + badgePaddingX * 2)
+    const badgeHeight = 52 * s
+    const badgeRadius = 18 * s
+
+    // 위치: 디자이너 기준 난이도 X/Y 를 그대로 사용
+    // 난이도 : W 173 / H 44 | X 379 / Y 280
+    const badgeX = x + 379 * s
+    const badgeY = y + 280 * s
+
+    // 색상은 기존 TYPE_COLORS_DATA 를 그대로 활용
     const shortName = song.info.type.toLowerCase()
-    console.log("Drawing badge for type:", shortName)
-    // JSON 데이터에서 매칭
-    const typeColorEntry = TYPE_COLORS_DATA.find(
-      (t) => t.typeName === shortName
-    )
+    const typeColorEntry = TYPE_COLORS_DATA.find((t) => t.typeName === shortName)
 
-    ctx.fillStyle = typeColorEntry
-      ? toHexColor(typeColorEntry.color)
-      : "#6b7280"
-    const badgeY = y + cardHeight - 50
+    ctx.fillStyle = typeColorEntry ? toHexColor(typeColorEntry.color) : "#e53935"
 
     ctx.beginPath()
-    ctx.roundRect(textX, badgeY, badgeWidth, 22, 6)
+    ctx.roundRect(badgeX, badgeY, badgeWidth, badgeHeight, badgeRadius)
     ctx.fill()
 
-    ctx.fillStyle = "#f9fafb"
+    // 텍스트는 왼쪽 패딩 후 중앙 정렬 느낌
+    ctx.fillStyle = "#ffffff"
+    ctx.textAlign = "center"
     ctx.textBaseline = "middle"
-    ctx.fillText(badgeText, textX + 7, badgeY + 11)
+    const textCenterX = badgeX + badgeWidth / 2
+    const textCenterY = badgeY + badgeHeight / 2
+
+    ctx.fillText(badgeText, textCenterX, textCenterY)
   }
 
-  // STRATEGY 라벨
+
+  // === 8. STRATEGY 라벨 ===
   if (song.isStrategy) {
     ctx.save()
     ctx.fillStyle = "#a855f7"
-    ctx.font = "bold 11px system-ui, sans-serif"
+    ctx.font = `bold ${18 * s}px ${CARD_FONT_FAMILY}`
     ctx.textAlign = "right"
+    ctx.textBaseline = "top"
     ctx.shadowColor = "#a855f7"
-    ctx.shadowBlur = 10
-    ctx.fillText("STRATEGY", x + cardWidth - 14, y + 20)
+    ctx.shadowBlur = 10 * s
+    ctx.fillText("STRATEGY", x + cardWidth - 24 * s, y + 24 * s)
     ctx.restore()
-    ctx.textAlign = "left"
   }
 }
 
@@ -571,7 +674,7 @@ export function TournamentScriptManager({ onBack }: { onBack: () => void }) {
   const [songSearchOpen, setSongSearchOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
   const [levelFilter, setLevelFilter] = useState("all")
-
+  const [cardBgImg, setCardBgImg] = useState<HTMLImageElement | null>(null)
 
   type SongSearchTarget =
     | { kind: "round"; roundIdx: number; field: string; arrayIdx?: number }
@@ -590,6 +693,17 @@ export function TournamentScriptManager({ onBack }: { onBack: () => void }) {
   const jacketsRef = useRef<(HTMLImageElement | null)[]>([])
 
   const { data: songData } = useSWR<{ chartData: ChartData[] }>("/api/songs", fetcher)
+
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+
+    const img = new window.Image()
+    img.src = "/card.png"   // public 폴더 기준 경로
+    img.onload = () => {
+      setCardBgImg(img)
+    }
+  }, [])
 
   const allCharts: FlattenedChart[] = useMemo(
     () =>
@@ -771,45 +885,42 @@ export function TournamentScriptManager({ onBack }: { onBack: () => void }) {
     jacketImg: HTMLImageElement | null,
     fileName: string,
   ) => {
-    // 원본 카드 크기(목록 카드와 동일)
-    const baseWidth = 540
-    const baseHeight = 190
-
-    // 단일 카드 해상도 업스케일 (2배 또는 3배 가능)
-    const scale = 2
+    // 단일 카드 = 디자이너 스펙 그대로 사용
+    const baseWidth = BASE_CARD_WIDTH   // 1080
+    const baseHeight = BASE_CARD_HEIGHT // 380
 
     const canvas = document.createElement("canvas")
-    canvas.width = baseWidth * scale
-    canvas.height = baseHeight * scale
+    canvas.width = baseWidth
+    canvas.height = baseHeight
 
     const ctx = canvas.getContext("2d")
     if (!ctx) return
 
-    // 스케일 적용
-    ctx.scale(scale, scale)
-
-    // 배경
+    // 배경은 drawSongCard 안에서 backgroundImg 넣어서 그리도록 설계했으니
+    // 여기서는 단색/그라디언트로 바탕만 깔거나 생략 가능
     const bg = ctx.createLinearGradient(0, 0, 0, baseHeight)
     bg.addColorStop(0, "#020617")
     bg.addColorStop(1, "#111827")
     ctx.fillStyle = bg
     ctx.fillRect(0, 0, baseWidth, baseHeight)
 
-    // 단일 카드 == 목록 카드 스타일 그대로
+    // 단일 카드 = 새 레이아웃 적용
     drawSongCard(ctx, song, 0, 0, jacketImg, {
       cardWidth: baseWidth,
       cardHeight: baseHeight,
-      jacketSize: 150,
+      jacketSize: JACKET_BASE_SIZE,
       team1Name: data.team1.name,
+      backgroundImg: cardBgImg,
+      // backgroundImg: 카드배경 HTMLImageElement (있으면 넣기)
     })
 
-    // 다운로드
     const dataUrl = canvas.toDataURL("image/png")
     const link = document.createElement("a")
     link.href = dataUrl
     link.download = fileName
     link.click()
   }
+
 
 
   const handleDownloadSingleCard = () => {
@@ -1006,6 +1117,7 @@ export function TournamentScriptManager({ onBack }: { onBack: () => void }) {
           cardHeight: baseHeight,
           jacketSize: 150,
           team1Name: data.team1.name,
+          backgroundImg: cardBgImg,
         })
       }
 
@@ -1015,6 +1127,7 @@ export function TournamentScriptManager({ onBack }: { onBack: () => void }) {
           cardHeight: baseHeight,
           jacketSize: 150,
           team1Name: data.team1.name,
+          backgroundImg: cardBgImg,
         })
       }
 
@@ -1308,10 +1421,10 @@ export function TournamentScriptManager({ onBack }: { onBack: () => void }) {
     setSelectedSongIndex(songs.length > 0 ? 0 : null)
 
     // 5. 캔버스에 그리기 
-    const cardWidth = 540
-    const cardHeight = 190
-    const jacketSize = 150
-    const padding = 28
+    const cardWidth = 1080      // 1080
+    const cardHeight = 380    // 380
+    const jacketSize = 300    // 300
+    const padding = 40      // 40
 
     const team1SongsForLayout = songs.filter((s) => s.team === data.team1.name)
     const team2SongsForLayout = songs.filter((s) => s.team === data.team2.name)
@@ -1418,47 +1531,6 @@ export function TournamentScriptManager({ onBack }: { onBack: () => void }) {
       return lines
     }
 
-    // 곡 제목을 2줄 안에 모두 보여줄 때까지 폰트를 줄이는 함수
-    const drawAutoFitTitle = (
-      ctx: CanvasRenderingContext2D,
-      text: string,
-      x: number,
-      y: number,
-      maxWidth: number,
-      maxLines: number,
-      maxFontSize: number,
-      minFontSize: number,
-    ): { fontSize: number; lineCount: number; totalHeight: number } => {
-      if (!text) return { fontSize: maxFontSize, lineCount: 0, totalHeight: 0 }
-
-      let chosenFontSize = minFontSize
-      let chosenLines: string[] = [text]
-
-      for (let fontSize = maxFontSize; fontSize >= minFontSize; fontSize--) {
-        ctx.font = `bold ${fontSize}px system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif`
-        const lines = wrapTextUnlimited(ctx, text, maxWidth)
-        if (lines.length <= maxLines) {
-          chosenFontSize = fontSize
-          chosenLines = lines
-          break
-        }
-      }
-
-      ctx.font = `bold ${chosenFontSize}px system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif`
-      const lineHeight = chosenFontSize + 4
-      const totalHeight = chosenLines.length * lineHeight
-
-      chosenLines.forEach((line, index) => {
-        if (index >= maxLines) return
-        ctx.fillText(line, x, y + index * lineHeight)
-      })
-
-      return {
-        fontSize: chosenFontSize,
-        lineCount: Math.min(chosenLines.length, maxLines),
-        totalHeight,
-      }
-    }
 
     // songs 배열에서 해당 SongEntry 의 자켓 이미지를 찾아오는 헬퍼
     const getJacketForSong = (song: SongEntry): HTMLImageElement | null => {
@@ -1505,175 +1577,6 @@ export function TournamentScriptManager({ onBack }: { onBack: () => void }) {
     }
 
     // 실제 카드 하나를 그리는 헬퍼 – BPL 스타일 카드
-    const drawSongCard = (
-      ctx: CanvasRenderingContext2D,
-      song: SongEntry,
-      x: number,
-      y: number,
-      jacketImg: HTMLImageElement | null,
-    ) => {
-      // 카드 외곽 네온 보더
-      ctx.save()
-      ctx.beginPath()
-      ctx.roundRect(x, y, cardWidth, cardHeight, 16)
-
-      // 네온 그림자
-      ctx.shadowColor = song.team === data.team1.name ? "#3b82f6" : "#f97373"
-      ctx.shadowBlur = 18
-      ctx.strokeStyle = "rgba(148, 163, 184, 0.6)"
-      ctx.lineWidth = 2
-      ctx.stroke()
-      ctx.restore()
-
-      // 카드 내부 배경 (살짝 그라디언트)
-      const innerGradient = ctx.createLinearGradient(x, y, x + cardWidth, y + cardHeight)
-      innerGradient.addColorStop(0, "rgba(15, 23, 42, 0.95)")
-      innerGradient.addColorStop(1, "rgba(17, 24, 39, 0.9)")
-      ctx.fillStyle = innerGradient
-      ctx.beginPath()
-      ctx.roundRect(x, y, cardWidth, cardHeight, 16)
-      ctx.fill()
-
-      // 팀 색 좌측 바
-      ctx.fillStyle = song.team === data.team1.name ? "#3b82f6" : "#ef4444"
-      ctx.beginPath()
-      ctx.roundRect(x, y, 8, cardHeight, [16, 0, 0, 16] as any)
-      ctx.fill()
-
-      const jacketX = x + 22
-      const jacketY = y + (cardHeight - jacketSize) / 2
-
-      // 자켓 이미지 (더 크게, 비중↑)
-      if (jacketImg) {
-        ctx.save()
-        ctx.beginPath()
-        ctx.roundRect(jacketX, jacketY, jacketSize, jacketSize, 10)
-        ctx.clip()
-        ctx.drawImage(jacketImg, jacketX, jacketY, jacketSize, jacketSize)
-        ctx.restore()
-      } else {
-        // 플레이스홀더
-        const gradient = ctx.createLinearGradient(jacketX, jacketY, jacketX + jacketSize, jacketY + jacketSize)
-        gradient.addColorStop(0, "#4f46e5")
-        gradient.addColorStop(1, "#a855f7")
-        ctx.fillStyle = gradient
-        ctx.beginPath()
-        ctx.roundRect(jacketX, jacketY, jacketSize, jacketSize, 10)
-        ctx.fill()
-
-        ctx.fillStyle = "#e5e7eb"
-        ctx.font = "40px system-ui, sans-serif"
-        ctx.textAlign = "center"
-        ctx.textBaseline = "middle"
-        ctx.fillText("♪", jacketX + jacketSize / 2, jacketY + jacketSize / 2)
-      }
-
-      // 텍스트 영역
-      const textX = jacketX + jacketSize + 16
-      const textMaxWidth = cardWidth - (textX - x) - 16
-
-      // 선수 이름
-      // ctx.fillStyle = "#9ca3af"
-      // ctx.font = "12px system-ui, sans-serif"
-      // ctx.textAlign = "left"
-      // ctx.textBaseline = "top"
-      // ctx.fillText(song.player || "PLAYER", textX, y + 14)
-
-      // 곡명 (두 줄까지, 줄바꿈 / … 없음)
-      ctx.fillStyle = "#f9fafb"
-
-      // 곡 제목에서 끝의 " MXM", " EXH" 같은 꼬리표 제거
-      const rawTitle = song.songName || ""
-      const cleanTitle = stripDifficultyFromTitle(rawTitle, song)
-
-      // 최대 2줄 안에 전부 들어갈 때까지 폰트를 줄여가며 그리기
-      const titleTopY = y + 54
-      const { lineCount, fontSize, totalHeight } = drawAutoFitTitle(
-        ctx,
-        cleanTitle,
-        textX,
-        titleTopY,
-        textMaxWidth,
-        2,   // 최대 줄 수
-        24,  // 최대 폰트 크기 (조금 키움)
-        12,  // 최소 폰트 크기
-      )
-
-      // 아티스트
-      let nextTextY = titleTopY + totalHeight + 4 -8
-      if (song.info?.artist) {
-        ctx.fillStyle = "#9ca3af"
-        ctx.font = "12px system-ui, sans-serif"
-        drawMultilineText(ctx, song.info.artist, textX, nextTextY, textMaxWidth, 18, 1)
-        nextTextY += 20
-      }
-
-      // 날짜 (YYYY-MM-DD까지만)
-      if (song.info?.date) {
-        ctx.fillStyle = "#6b7280"
-        ctx.font = "11px system-ui, sans-serif"
-
-        const rawDate = song.info.date
-        const formattedDate = rawDate.includes("T") ? rawDate.split("T")[0] : rawDate.slice(0, 10)
-        drawMultilineText(ctx, formattedDate, textX, nextTextY, textMaxWidth, 16, 1)
-        nextTextY += 18
-      }
-
-      // 난이도/레벨 배지 (대문자, 네온)
-      if (song.info?.level && song.info?.type) {
-        const badgeText = `${song.info.type.toUpperCase()} ${song.info.level}`
-
-        ctx.font = "bold 12px system-ui, sans-serif"
-        const badgeWidth = ctx.measureText(badgeText).width + 14
-
-        const typeColors: Record<string, string> = {
-          NOV: "#6366f1",
-          ADV: "#eab308",
-          EXH: "#ef4444",
-          MXM: "#ec4899",
-          INF: "#ec4899",
-          GRV: "#f97316",
-          HVN: "#06b6d4",
-          VVD: "#a855f7",
-          XCD: "#22c55e",
-        }
-
-        const shortName = song.info.type.toLowerCase()
-        console.log("Drawing badge for type:", shortName)
-        // JSON 데이터에서 매칭
-        const typeColorEntry = TYPE_COLORS_DATA.find(
-          (t) => t.typeName === shortName
-        )
-
-        ctx.fillStyle = typeColorEntry
-          ? toHexColor(typeColorEntry.color)
-          : "#6b7280"
-
-        // 카드 하단에서 20px 위에 고정
-        const badgeY = y + cardHeight - 50
-
-        ctx.beginPath()
-        ctx.roundRect(textX, badgeY, badgeWidth, 22, 6)
-        ctx.fill()
-
-        ctx.fillStyle = "#f9fafb"
-        ctx.textBaseline = "middle"
-        ctx.fillText(badgeText, textX + 7, badgeY + 11)
-      }
-
-      // 스트래티지 라벨
-      if (song.isStrategy) {
-        ctx.save()
-        ctx.fillStyle = "#a855f7"
-        ctx.font = "bold 11px system-ui, sans-serif"
-        ctx.textAlign = "right"
-        ctx.shadowColor = "#a855f7"
-        ctx.shadowBlur = 10
-        ctx.fillText("STRATEGY", x + cardWidth - 14, y + 20)
-        ctx.restore()
-        ctx.textAlign = "left"
-      }
-    }
 
     // 행 단위로 좌/우에 팀1/팀2 카드 배치
     for (let row = 0; row < rows; row++) {
@@ -1681,15 +1584,28 @@ export function TournamentScriptManager({ onBack }: { onBack: () => void }) {
 
       const songLeft = team1SongsForLayout[row]   // 팀1
       const songRight = team2SongsForLayout[row]  // 팀2
-
+      const baseWidth = BASE_CARD_WIDTH   // 1080
+      const baseHeight = BASE_CARD_HEIGHT // 380
       if (songLeft) {
         const xLeft = col1X
-        drawSongCard(ctx, songLeft, xLeft, y, getJacketForSong(songLeft))
+        drawSongCard(ctx, songLeft, xLeft, y, getJacketForSong(songLeft), {
+          cardWidth: baseWidth,
+          cardHeight: baseHeight,
+          jacketSize: 150,
+          team1Name: data.team1.name,
+          backgroundImg: cardBgImg,
+        })
       }
 
       if (songRight) {
         const xRight = col2X
-        drawSongCard(ctx, songRight, xRight, y, getJacketForSong(songRight))
+        drawSongCard(ctx, songRight, xRight, y, getJacketForSong(songRight), {
+          cardWidth: baseWidth,
+          cardHeight: baseHeight,
+          jacketSize: 150,
+          team1Name: data.team1.name,
+          backgroundImg: cardBgImg,
+        })
       }
     }
 
