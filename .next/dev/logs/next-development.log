@@ -1,42 +1,5 @@
-[00:00:01.047] Server  LOG      ✓ Ready in 690ms
-[00:00:03.756] Browser INFO    %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
-[00:00:03.985] Browser LOG     %c[Vercel Web Analytics]%c Debug mode is enabled by default in development. No requests will be sent to the server. color: rgb(120, 120, 120) color: inherit
-[00:00:03.986] Browser LOG     %c[Vercel Web Analytics]%c Running queued event color: rgb(120, 120, 120) color: inherit pageview {"path":"/","route":"/"}
-[00:00:03.986] Browser LOG     %c[Vercel Web Analytics]%c [pageview] http://localhost:3000/ color: rgb(120, 120, 120) color: inherit {"dp":"/","o":"http://localhost:3000/","sdkn":"@vercel/analytics/next","sdkv":"1.5.0","sv":"0.1.3","ts":1764146684012}
-[00:00:42.904] Browser WARN    Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent}.
-[00:00:42.904] Browser WARN    Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent}.
-[00:00:44.931] Browser WARN    Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent}.
-[00:00:44.931] Browser WARN    Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent}.
-[00:00:46.964] Browser WARN    Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent}.
-[00:00:46.964] Browser WARN    Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent}.
-[00:00:49.088] Browser WARN    Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent}.
-[00:00:49.088] Browser WARN    Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent}.
-[00:00:53.031] Browser WARN    Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent}.
-[00:00:53.031] Browser WARN    Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent}.
-[00:00:54.061] Browser LOG     [v0] Failed to load image: https://anzuinfo.s3.ap-northeast-2.amazonaws.com/7_novice.webp
-[00:00:54.979] Browser WARN    Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent}.
-[00:00:54.979] Browser WARN    Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent}.
-[00:00:56.021] Browser LOG     [v0] Failed to load image: https://anzuinfo.s3.ap-northeast-2.amazonaws.com/17_novice.webp
-[00:00:56.943] Browser WARN    Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent}.
-[00:00:56.943] Browser WARN    Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent}.
-[00:00:59.963] Browser LOG     [v0] Failed to load image: https://anzuinfo.s3.ap-northeast-2.amazonaws.com/4_novice.webp
-[00:01:00.807] Browser WARN    Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent}.
-[00:01:00.807] Browser WARN    Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent}.
-[00:01:01.846] Browser LOG     [v0] Failed to load image: https://anzuinfo.s3.ap-northeast-2.amazonaws.com/10_novice.webp
-[00:01:02.883] Browser WARN    Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent}.
-[00:01:02.883] Browser WARN    Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent}.
-[00:01:04.033] Browser LOG     [v0] Failed to load image: https://anzuinfo.s3.ap-northeast-2.amazonaws.com/15_novice.webp
-[00:01:05.267] Browser WARN    Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent}.
-[00:01:05.267] Browser WARN    Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent}.
-[00:01:08.640] Browser LOG     [v0] Failed to load image: https://anzuinfo.s3.ap-northeast-2.amazonaws.com/5_advanced.webp
-[00:01:09.670] Browser WARN    Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent}.
-[00:01:09.670] Browser WARN    Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent}.
-[00:01:10.312] Browser LOG     [v0] Failed to load image: https://anzuinfo.s3.ap-northeast-2.amazonaws.com/37_advanced.webp
-[00:01:11.304] Browser WARN    Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent}.
-[00:01:11.304] Browser WARN    Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent}.
-[00:01:12.832] Browser LOG     [v0] Failed to load image: https://anzuinfo.s3.ap-northeast-2.amazonaws.com/52_advanced.webp
-[00:01:35.161] Browser LOG     [v0] Image load failed, using placeholder https://anzuinfo.s3.ap-northeast-2.amazonaws.com/52_advanced.webp
-[00:01:35.161] Browser LOG     [v0] Image load failed, using placeholder https://anzuinfo.s3.ap-northeast-2.amazonaws.com/4_novice.webp
-[00:01:35.161] Browser LOG     [v0] Image load failed, using placeholder https://anzuinfo.s3.ap-northeast-2.amazonaws.com/17_novice.webp
-[00:01:35.161] Browser WARN    Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent}.
-[00:01:35.161] Browser WARN    Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent}.
+[00:00:01.014] Server  LOG      ✓ Ready in 650ms
+[00:00:03.812] Browser INFO    %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[00:00:04.060] Browser LOG     %c[Vercel Web Analytics]%c Debug mode is enabled by default in development. No requests will be sent to the server. color: rgb(120, 120, 120) color: inherit
+[00:00:04.060] Browser LOG     %c[Vercel Web Analytics]%c Running queued event color: rgb(120, 120, 120) color: inherit pageview {"path":"/","route":"/"}
+[00:00:04.060] Browser LOG     %c[Vercel Web Analytics]%c [pageview] http://localhost:3000/ color: rgb(120, 120, 120) color: inherit {"dp":"/","o":"http://localhost:3000/","sdkn":"@vercel/analytics/next","sdkv":"1.5.0","sv":"0.1.3","ts":1764319547284}
