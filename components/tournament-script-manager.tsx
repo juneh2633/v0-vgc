@@ -483,7 +483,8 @@ export function TournamentScriptManager({ onBack }: { onBack: () => void }) {
     exportSingleCardImage(
       song,
       jacketImg,
-      `round${imageRoundIdx + 1}_${safeTeam}_${safePlayer}.png`
+      `round${imageRoundIdx + 1}_${safeTeam}_${safePlayer}.png`,
+      cardBgImg,
     );
   };
 
