@@ -162,6 +162,31 @@ const SongInputField = ({
   </div>
 );
 
+function buildStrategyMessage(
+  teamName: string,
+  used: boolean,
+  target: string | null,
+  selected: string | null
+) {
+  if (!used) {
+    // 사용 안 함
+    return `## 스트래티지 카드는 사용되지 않았습니다.`;
+  }
+
+  if (!target) {
+    // 타겟이 없으면 사용 자체가 불완전 → 미사용이 아닌 "미변경" 처리됨
+    return `## 팀 ${teamName} 에서 스트래티지 카드를 사용하였으나, 선곡을 변경하지 않았습니다.`;
+  }
+
+  // selected가 없거나 target 그대로면 → 미변경
+  if (!selected || selected === target) {
+    return `## 팀 ${teamName} 에서 ${target} 곡에 스트래티지 카드를 사용하였으나, 선곡을 변경하지 않았습니다.`;
+  }
+
+  // 정상 변경됨
+  return `## 팀 ${teamName} 에서 ${target} 곡에 스트래티지 카드를 사용하여 무작위 선곡인 ${selected} 으로 변경되었습니다.`;
+}
+
 export function TournamentScriptManager({ onBack }: { onBack: () => void }) {
   const [data, setData] = useState<TournamentData>(defaultData());
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -247,31 +272,163 @@ export function TournamentScriptManager({ onBack }: { onBack: () => void }) {
     setTimeout(() => setCopiedId(null), 2000);
   };
 
-  // Helper to get SongInfo from the map, prioritizing the replaced song if applicable
-  const getSongInfo = (
-    roundIdx: number,
-    field: string,
-    arrayIdx?: number,
-    originalSongName?: string
-  ): SongInfo | null => {
-    const infoKey =
-      arrayIdx !== undefined
-        ? `round${roundIdx}_${field}_${arrayIdx}`
-        : `round${roundIdx}_${field}`;
+  const buildRound2StrategySongsForTeamAndLevel = (
+    teamIdx: 1 | 2,
+    levelGroup: 17 | 18
+  ): SongEntry[] => {
+    const roundIdx = 1; // 2라운드
+    const round = data.rounds[roundIdx];
 
-    // Try to find info for the potentially replaced song first
-    if (data.songInfoMap[infoKey]) {
-      return data.songInfoMap[infoKey];
+    // team / level 에 따라 RoundData의 필드 선택
+    let field: keyof RoundData;
+    if (teamIdx === 1) {
+      field = levelGroup === 17 ? "team1Strategy17" : "team1Strategy18";
+    } else {
+      field = levelGroup === 17 ? "team2Strategy17" : "team2Strategy18";
     }
-    // Fallback to original song name if provided
-    if (originalSongName) {
-      const originalKey =
-        arrayIdx !== undefined
-          ? `round${roundIdx}_${field}_${arrayIdx}` // Assuming original field name is same
-          : `round${roundIdx}_${field}`;
-      return data.songInfoMap[originalKey] || null;
+
+    const arr = (round[field] ?? []) as string[];
+    const teamName = teamIdx === 1 ? data.team1.name : data.team2.name;
+    const teamLabel = teamName || (teamIdx === 1 ? "TEAM 1" : "TEAM 2");
+    const baseKeyStr = String(field);
+
+    return arr
+      .map((name, idx) => ({ name, idx }))
+      .filter(({ name }) => name && name.trim() !== "")
+      .slice(0, 3) // 최대 3개
+      .map(({ name, idx }) => {
+        const infoKey = `round${roundIdx}_${baseKeyStr}_${idx}`;
+        const info = data.songInfoMap[infoKey] || null;
+
+        const songEntry: SongEntry = {
+          team: teamLabel,
+          player: "",
+          songName: name,
+          info,
+          isStrategy: true,
+        };
+        return songEntry;
+      });
+  };
+
+  // 2라운드에서 팀/레벨별(17 또는 18) 카드 3장을 세로로 뽑아서 한 장 PNG로 만드는 함수
+  const generateRound2StrategyLevelImage = async (
+    teamIdx: 1 | 2,
+    levelGroup: 17 | 18
+  ) => {
+    const roundIdx = 1; // 2라운드 고정
+    const songs = buildRound2StrategySongsForTeamAndLevel(teamIdx, levelGroup);
+
+    if (songs.length === 0) {
+      setNotification({
+        type: "error",
+        message: `2라운드 ${teamIdx}팀 Lv${levelGroup} 스트래티지 곡이 없습니다.`,
+      });
+      return;
     }
-    return null;
+
+    // 팀 이름
+    const teamName = teamIdx === 1 ? data.team1.name : data.team2.name;
+    const teamLabel = teamName || (teamIdx === 1 ? "TEAM 1" : "TEAM 2");
+
+    // 자켓 로더 (다른 곳에서 쓰는 패턴 그대로)
+    const loadImage = (src: string): Promise<HTMLImageElement | null> => {
+      return new Promise((resolve) => {
+        if (!src) return resolve(null);
+        const img = new window.Image();
+        img.crossOrigin = "anonymous";
+        img.onload = () => resolve(img);
+        img.onerror = () => resolve(null);
+        img.src = src.startsWith("data:")
+          ? src
+          : `/api/image-proxy?url=${encodeURIComponent(src)}`;
+      });
+    };
+
+    const jacketImages: (HTMLImageElement | null)[] = await Promise.all(
+      songs.map((song) => {
+        if (song.info?.jacketBase64) {
+          return loadImage(song.info.jacketBase64);
+        } else if (song.info?.jacket) {
+          return loadImage(song.info.jacket);
+        }
+        return Promise.resolve(null);
+      })
+    );
+
+    const getJacketForSong = (song: SongEntry): HTMLImageElement | null => {
+      const idx = songs.indexOf(song);
+      if (idx === -1) return null;
+      return jacketImages[idx];
+    };
+
+    // 카드 크기: 기본 카드 사이즈 그대로 사용 → PPT에서 스케일 조절
+    const cardWidth = BASE_CARD_WIDTH;
+    const cardHeight = BASE_CARD_HEIGHT;
+    const paddingX = 40;
+    const paddingY = 40;
+    const headerHeight = 120;
+
+    const rows = songs.length;
+    const canvasWidth = cardWidth + paddingX * 2;
+    const canvasHeight =
+      headerHeight + paddingY * (rows + 1) + cardHeight * rows;
+
+    const canvas = document.createElement("canvas");
+    canvas.width = canvasWidth;
+    canvas.height = canvasHeight;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    // 배경 (다른 이미지들 만들 때와 동일 스타일)
+    const bgGradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+    bgGradient.addColorStop(0, "#020617");
+    bgGradient.addColorStop(0.5, "#020617");
+    bgGradient.addColorStop(1, "#111827");
+    ctx.fillStyle = bgGradient;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // 상단 타이틀
+    ctx.fillStyle = "#e5e7eb";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+    ctx.font =
+      "bold 28px system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+
+    ctx.fillText(
+      `2라운드 스트래티지 - ${teamLabel}`,
+      canvasWidth / 2,
+      24
+    );
+
+    // 부제 (원하면 지워도 됨)
+    ctx.font =
+      "14px system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+    ctx.fillStyle = "#9ca3af";
+    ctx.fillText("PPT용: 카드 3장 세로 배치", canvasWidth / 2, 24 + 32);
+
+    // 카드 3장 세로로 쭉
+    songs.forEach((song, idx) => {
+      const cardX = paddingX;
+      const cardY = headerHeight + paddingY * (idx + 1) + cardHeight * idx;
+
+      drawSongCard(ctx, song, cardX, cardY, getJacketForSong(song), {
+        cardWidth,
+        cardHeight,
+        jacketSize: JACKET_BASE_SIZE,
+        team1Name: data.team1.name, // 네온색 기준 팀
+        backgroundImg: cardBgImg, // 이미 있으신 템플릿 배경
+        titleMode: "static",
+      });
+    });
+
+    const dataUrl = canvas.toDataURL("image/png");
+
+    // 기존 이미지 프리뷰/다운로드 로직 그대로 활용
+    setGeneratedImage(dataUrl);
+    setImageRoundIdx(roundIdx);
+    setImageDialogOpen(true);
   };
 
   const handleSelectSong = async (chart: FlattenedChart) => {
@@ -484,7 +641,7 @@ export function TournamentScriptManager({ onBack }: { onBack: () => void }) {
       song,
       jacketImg,
       `round${imageRoundIdx + 1}_${safeTeam}_${safePlayer}.png`,
-      cardBgImg,
+      cardBgImg
     );
   };
 
@@ -765,12 +922,12 @@ export function TournamentScriptManager({ onBack }: { onBack: () => void }) {
       // 밴 적용 + 인덱스 유지
       const team1Songs = rawTeam1Songs
         .map((name, idx) => ({ name, idx }))
-        .filter(({ name }) => name.trim() !== "" && name !== team1BannedSong)
+        .filter(({ name }) => name.trim() !== "" && name !== team2BannedSong)
         .slice(0, 2); // 👈 여기 추가
 
       const team2Songs = rawTeam2Songs
         .map((name, idx) => ({ name, idx }))
-        .filter(({ name }) => name.trim() !== "" && name !== team2BannedSong)
+        .filter(({ name }) => name.trim() !== "" && name !== team1BannedSong)
         .slice(0, 2); //
       // 팀1 곡들
       team1Songs.forEach(({ name: originalSong, idx }, displayIdx) => {
@@ -1206,6 +1363,393 @@ export function TournamentScriptManager({ onBack }: { onBack: () => void }) {
     setImageDialogOpen(true);
   };
 
+  // 라운드 + 팀 기준으로 스트래티지 곡들을 SongEntry 배열로 변환
+  const buildStrategySongsForRoundAndTeam = (
+    roundIdx: number,
+    teamIdx: 1 | 2
+  ): SongEntry[] => {
+    const round = data.rounds[roundIdx];
+    const isRound1 = roundIdx === 0;
+    const isRound2 = roundIdx === 1;
+    const isRound3 = roundIdx === 2;
+
+    const teamName = teamIdx === 1 ? data.team1.name : data.team2.name;
+
+    const buildFromArray = (
+      field: keyof RoundData,
+      values?: string[] | null
+    ): SongEntry[] => {
+      const baseKey = String(field);
+
+      return (values || [])
+        .map((name, idx) => ({ name, idx }))
+        .filter(({ name }) => name && name.trim() !== "")
+        .slice(0, 3) // 각 배열에서 최대 3곡
+        .map(({ name, idx }) => {
+          const infoKey = `round${roundIdx}_${baseKey}_${idx}`;
+          const info = data.songInfoMap[infoKey] || null;
+
+          return {
+            team: teamName,
+            player: "",
+            songName: name,
+            info,
+            isStrategy: true,
+          } as SongEntry;
+        });
+    };
+
+    // 1R / 3R : teamXStrategyOptions
+    if (isRound1 || isRound3) {
+      if (teamIdx === 1) {
+        return buildFromArray(
+          "team1StrategyOptions",
+          round.team1StrategyOptions
+        );
+      } else {
+        return buildFromArray(
+          "team2StrategyOptions",
+          round.team2StrategyOptions
+        );
+      }
+    }
+
+    // 2R : 팀당 17렙 3곡 + 18렙 3곡 = 6곡
+    if (isRound2) {
+      if (teamIdx === 1) {
+        const lv17 = buildFromArray("team1Strategy17", round.team1Strategy17);
+        const lv18 = buildFromArray("team1Strategy18", round.team1Strategy18);
+        return [...lv17, ...lv18]; // 총 6곡
+      } else {
+        const lv17 = buildFromArray("team2Strategy17", round.team2Strategy17);
+        const lv18 = buildFromArray("team2Strategy18", round.team2Strategy18);
+        return [...lv17, ...lv18];
+      }
+    }
+
+    return [];
+  };
+  const handleGenerateStrategyTeam1 = (roundIdx: number) => {
+    generateStrategyCardImageForTeam(roundIdx, 1);
+  };
+
+  const handleGenerateStrategyTeam2 = (roundIdx: number) => {
+    generateStrategyCardImageForTeam(roundIdx, 2);
+  };
+  const handleGenerateRound2Lv17Team1 = () => {
+    generateRound2StrategyLevelImage(1, 17);
+  };
+
+  const handleGenerateRound2Lv18Team1 = () => {
+    generateRound2StrategyLevelImage(1, 18);
+  };
+
+  const handleGenerateRound2Lv17Team2 = () => {
+    generateRound2StrategyLevelImage(2, 17);
+  };
+
+  const handleGenerateRound2Lv18Team2 = () => {
+    generateRound2StrategyLevelImage(2, 18);
+  };
+
+  const generateStrategyCardImageForTeam = async (
+    roundIdx: number,
+    teamIdx: 1 | 2
+  ) => {
+    const round = data.rounds[roundIdx];
+    const isRound1 = roundIdx === 0;
+    const isRound2 = roundIdx === 1;
+    const isRound3 = roundIdx === 2;
+
+    const team = teamIdx === 1 ? data.team1 : data.team2;
+    const teamLabel = team.name || (teamIdx === 1 ? "TEAM 1" : "TEAM 2");
+
+    // =========================
+    // 2라운드: 17렙 3개 왼쪽 / 18렙 3개 오른쪽
+    // =========================
+    if (isRound2) {
+      const raw17 =
+        teamIdx === 1
+          ? round.team1Strategy17 || []
+          : round.team2Strategy17 || [];
+      const raw18 =
+        teamIdx === 1
+          ? round.team1Strategy18 || []
+          : round.team2Strategy18 || [];
+
+      const buildArr = (
+        baseKey: keyof RoundData,
+        arr: string[]
+      ): SongEntry[] => {
+        const baseKeyStr = String(baseKey);
+        return arr
+          .map((name, idx) => ({ name, idx }))
+          .filter(({ name }) => name && name.trim() !== "")
+          .slice(0, 3)
+          .map(({ name, idx }) => {
+            const infoKey = `round${roundIdx}_${baseKeyStr}_${idx}`;
+            const info = data.songInfoMap[infoKey] || null;
+
+            return {
+              team: teamLabel,
+              player: "",
+              songName: name,
+              info,
+              isStrategy: true,
+            } as SongEntry;
+          });
+      };
+
+      const songs17 =
+        teamIdx === 1
+          ? buildArr("team1Strategy17", raw17)
+          : buildArr("team2Strategy17", raw17);
+      const songs18 =
+        teamIdx === 1
+          ? buildArr("team1Strategy18", raw18)
+          : buildArr("team2Strategy18", raw18);
+
+      const rows = Math.max(songs17.length, songs18.length);
+      if (rows === 0) {
+        setNotification?.({
+          type: "error",
+          message: "해당 팀의 2라운드 스트래티지 후보 곡이 없습니다.",
+        });
+        return;
+      }
+
+      // ===== 카드 비율 유지하면서 축소 (2열 배치) =====
+      const scale = 0.55; // 필요하면 0.5~0.6 사이로 조절
+      const cardWidth = BASE_CARD_WIDTH * scale;
+      const cardHeight = BASE_CARD_HEIGHT * scale;
+
+      const paddingX = 40;
+      const paddingY = 40;
+      const headerHeight = 120;
+
+      const col1X = paddingX;
+      const col2X = paddingX * 2 + cardWidth;
+
+      const canvasWidth = col2X + cardWidth + paddingX; // 좌+우+양쪽 패딩
+      const canvasHeight =
+        headerHeight + paddingY * (rows + 1) + cardHeight * rows;
+
+      const canvas = document.createElement("canvas");
+      canvas.width = canvasWidth;
+      canvas.height = canvasHeight;
+
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+
+      // 배경
+      const bgGradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+      bgGradient.addColorStop(0, "#020617");
+      bgGradient.addColorStop(0.5, "#020617");
+      bgGradient.addColorStop(1, "#111827");
+      ctx.fillStyle = bgGradient;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // 상단 타이틀
+      ctx.fillStyle = "#e5e7eb";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "top";
+      ctx.font =
+        "bold 32px system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+      ctx.fillText(
+        `2라운드 스트래티지 카드 - ${teamLabel}`,
+        canvasWidth / 2,
+        24
+      );
+
+      // 컬럼 라벨 (Lv17 / Lv18)
+      ctx.textAlign = "left";
+      ctx.textBaseline = "top";
+      ctx.font =
+        "bold 22px system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+
+      ctx.fillStyle = "#60a5fa";
+      ctx.fillText("Lv17 스트래티지", col1X, 70);
+
+      ctx.fillStyle = "#f97373";
+      ctx.fillText("Lv18 스트래티지", col2X, 70);
+
+      // 자켓 로딩용 전체 목록
+      const allSongs = [...songs17, ...songs18];
+
+      const loadImage = (src: string): Promise<HTMLImageElement | null> => {
+        return new Promise((resolve) => {
+          if (!src) return resolve(null);
+          const img = new window.Image();
+          img.crossOrigin = "anonymous";
+          img.onload = () => resolve(img);
+          img.onerror = () => resolve(null);
+          img.src = src.startsWith("data:")
+            ? src
+            : `/api/image-proxy?url=${encodeURIComponent(src)}`;
+        });
+      };
+
+      const jacketImages: (HTMLImageElement | null)[] = await Promise.all(
+        allSongs.map((song) => {
+          if (song.info?.jacketBase64) {
+            return loadImage(song.info.jacketBase64);
+          } else if (song.info?.jacket) {
+            return loadImage(song.info.jacket);
+          }
+          return Promise.resolve(null);
+        })
+      );
+
+      const getJacketForSong = (song: SongEntry): HTMLImageElement | null => {
+        const idx = allSongs.indexOf(song);
+        if (idx === -1) return null;
+        return jacketImages[idx];
+      };
+
+      const team1Name = data.team1.name;
+
+      // 카드 그리기: 왼쪽 컬럼 Lv17, 오른쪽 컬럼 Lv18
+      for (let row = 0; row < rows; row++) {
+        const baseY = headerHeight + paddingY * (row + 1) + cardHeight * row;
+
+        const s17 = songs17[row];
+        const s18 = songs18[row];
+
+        if (s17) {
+          drawSongCard(ctx, s17, col1X, baseY, getJacketForSong(s17), {
+            cardWidth,
+            cardHeight,
+            jacketSize: JACKET_BASE_SIZE * scale,
+            team1Name,
+            backgroundImg: cardBgImg,
+            titleMode: "static",
+          });
+        }
+
+        if (s18) {
+          drawSongCard(ctx, s18, col2X, baseY, getJacketForSong(s18), {
+            cardWidth,
+            cardHeight,
+            jacketSize: JACKET_BASE_SIZE * scale,
+            team1Name,
+            backgroundImg: cardBgImg,
+            titleMode: "static",
+          });
+        }
+      }
+
+      const dataUrl = canvas.toDataURL("image/png");
+      setGeneratedImage(dataUrl);
+      setImageRoundIdx(roundIdx);
+      setImageDialogOpen(true);
+      return;
+    }
+
+    // =========================
+    // 1R / 3R: 기존처럼 세로로 카드 n장
+    // =========================
+    const songs = buildStrategySongsForRoundAndTeam(roundIdx, teamIdx);
+
+    if (songs.length === 0) {
+      setNotification?.({
+        type: "error",
+        message: "해당 라운드/팀의 스트레티지 후보 곡이 없습니다.",
+      });
+      return;
+    }
+
+    const rows = songs.length;
+
+    const cardWidth = BASE_CARD_WIDTH; // 원본 비율 그대로
+    const cardHeight = BASE_CARD_HEIGHT;
+
+    const paddingX = 40;
+    const paddingY = 40;
+    const headerHeight = 120;
+
+    const canvasWidth = cardWidth + paddingX * 2;
+    const canvasHeight =
+      headerHeight + paddingY * (rows + 1) + cardHeight * rows;
+
+    const canvas = document.createElement("canvas");
+    canvas.width = canvasWidth;
+    canvas.height = canvasHeight;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const bgGradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+    bgGradient.addColorStop(0, "#020617");
+    bgGradient.addColorStop(0.5, "#020617");
+    bgGradient.addColorStop(1, "#111827");
+    ctx.fillStyle = bgGradient;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.fillStyle = "#e5e7eb";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+    ctx.font =
+      "bold 32px system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+
+    const roundTitle =
+      isRound1 || isRound3
+        ? `${roundIdx + 1}라운드 스트래티지 카드`
+        : `라운드 ${roundIdx + 1} 스트티지 카드`;
+
+    ctx.fillText(`${roundTitle} - ${teamLabel}`, canvasWidth / 2, 24);
+
+    const loadImage = (src: string): Promise<HTMLImageElement | null> => {
+      return new Promise((resolve) => {
+        if (!src) return resolve(null);
+        const img = new window.Image();
+        img.crossOrigin = "anonymous";
+        img.onload = () => resolve(img);
+        img.onerror = () => resolve(null);
+        img.src = src.startsWith("data:")
+          ? src
+          : `/api/image-proxy?url=${encodeURIComponent(src)}`;
+      });
+    };
+
+    const jacketImages: (HTMLImageElement | null)[] = await Promise.all(
+      songs.map((song) => {
+        if (song.info?.jacketBase64) {
+          return loadImage(song.info.jacketBase64);
+        } else if (song.info?.jacket) {
+          return loadImage(song.info.jacket);
+        }
+        return Promise.resolve(null);
+      })
+    );
+
+    const getJacketForSong = (song: SongEntry): HTMLImageElement | null => {
+      const idx = songs.indexOf(song);
+      if (idx === -1) return null;
+      return jacketImages[idx];
+    };
+
+    const team1Name = data.team1.name;
+
+    songs.forEach((song, idx) => {
+      const cardX = paddingX;
+      const cardY = headerHeight + paddingY * (idx + 1) + cardHeight * idx;
+
+      drawSongCard(ctx, song, cardX, cardY, getJacketForSong(song), {
+        cardWidth,
+        cardHeight,
+        jacketSize: JACKET_BASE_SIZE,
+        team1Name,
+        backgroundImg: cardBgImg,
+        titleMode: "static",
+      });
+    });
+
+    const dataUrl = canvas.toDataURL("image/png");
+    setGeneratedImage(dataUrl);
+    setImageRoundIdx(roundIdx);
+    setImageDialogOpen(true);
+  };
+
   const copyImageToClipboard = async () => {
     if (!generatedImage) return;
 
@@ -1587,7 +2131,7 @@ export function TournamentScriptManager({ onBack }: { onBack: () => void }) {
   * 팀 **${data.team1.name}** 선곡 : **${team1Songs}**
 * **팀 ${data.team2.name} : ${team2Players}**
   * 팀 **${data.team2.name}** 선곡 : **${team2Songs}**
-## 밴 카드를 ${
+## 밴 카드 및 스트래티지 카드 사용여부를 ${
         round.deadline || "??:??"
       }까지 결정하여 팀 채널에서 알려주시기 바랍니다!
 * 밴 카드를 먼저 사용 후, 스트래티지 카드 사용 여부를 결정하여 주세요.
@@ -1601,7 +2145,7 @@ export function TournamentScriptManager({ onBack }: { onBack: () => void }) {
   * 팀 **${data.team1.name}** 선곡 : **${team1Songs}**
 * **팀 ${data.team2.name} : ${round.team2Player || ""}**
   * 팀 **${data.team2.name}** 선곡 : **${team2Songs}**
-## 밴 카드를 ${
+## 밴 카드 및 스트래티지 카드 사용여부를 ${
         round.deadline || "??:??"
       }까지 결정하여 팀 채널에서 알려주시기 바랍니다!`;
     } else {
@@ -1735,7 +2279,7 @@ ${filtered.map((song) => `* ${song}`).join("\n")}`;
       });
 
       if (team2Banned) {
-        script += `* 팀 **${data.team1.name}** 의 자선곡 **${team2Banned}**는 밴 당하였습니다.\n`;
+        script += `* 팀 **${data.team1.name}** 의 자선곡 ~~${team2Banned}~~는 밴 당하였습니다.\n\n`;
       }
 
       team2PlayableSongs.forEach((song, idx) => {
@@ -1745,68 +2289,240 @@ ${filtered.map((song) => `* ${song}`).join("\n")}`;
       });
 
       if (team1Banned) {
-        script += `* 팀 **${data.team2.name}** 의 자선곡 **${team1Banned}**는 밴 당하였습니다.\n`;
+        script += `* 팀 **${data.team2.name}** 의 자선곡 ~~${team1Banned}~~는 밴 당하였습니다.\n`;
       }
 
       script += `\n종료 후 나오는 리절트 창 촬영 부탁드립니다.\n`;
 
+      // if (!round.team1StrategyUsed && !round.team2StrategyUsed) {
+      //   script += `\n## 스트래티지 카드는 사용되지 않았습니다.`;
+      // } else {
+      //   if (
+      //     round.team1StrategyUsed &&
+      //     team1StrategyTarget &&
+      //     team1StrategySelected
+      //   ) {
+      //     if (team1StrategySelected === team1StrategyTarget) {
+      //       script += `\n## 팀 ${data.team1.name} 에서 ${team1StrategyTarget} 곡에 스트래티지 카드를 사용하였으나, 선곡을 변경하지 않았습니다.`;
+      //     } else {
+      //       script += `\n## 팀 ${data.team1.name} 에서 ${team1StrategyTarget} 곡에 스트래티지 카드를 사용하여 무작위 선곡인 ${team1StrategySelected} 으로 변경되었습니다.`;
+      //     }
+      //   }
+      //   if (
+      //     round.team2StrategyUsed &&
+      //     team2StrategyTarget &&
+      //     team2StrategySelected
+      //   ) {
+      //     if (team2StrategySelected === team2StrategyTarget) {
+      //       script += `\n## 팀 ${data.team2.name} 에서 ${team2StrategyTarget} 곡에 스트래티지 카드를 사용하였으나, 선곡을 변경하지 않았습니다.`;
+      //     } else {
+      //       script += `\n## 팀 ${data.team2.name} 에서 ${team2StrategyTarget} 곡에 스트래티지 카드를 사용하여 무작위 선곡인 ${team2StrategySelected} 으로 변경되었습니다.`;
+      //     }
+      //   }
+      // }
+      //
+      // 🔹 팀1 스트래티지 멘트
+      const t1Message = buildStrategyMessage(
+        data.team1.name,
+        round.team1StrategyUsed,
+        round.team1StrategyTarget || null,
+        round.team1StrategySelected || null
+      );
+
+      // 🔹 팀2 스트래티지 멘트
+      const t2Message = buildStrategyMessage(
+        data.team2.name,
+        round.team2StrategyUsed,
+        round.team2StrategyTarget || null,
+        round.team2StrategySelected || null
+      );
+
+      // @@@@@@@@@@@@@@@@@@@
       if (!round.team1StrategyUsed && !round.team2StrategyUsed) {
-        script += `\n## 스트래티지 카드는 사용되지 않았습니다.`;
+        script += `\n## 스트래티지 카드는 사용되지 않았습니다.\n`;
       } else {
-        if (
-          round.team1StrategyUsed &&
-          team1StrategyTarget &&
-          team1StrategySelected
-        ) {
-          script += `\n## 팀 ${data.team1.name} 에서 ${team1StrategyTarget}곡에 스트래티지 카드를 사용하여 무작위 선곡인 ${team1StrategySelected}으로 변경되었습니다.`;
-        }
-        if (
-          round.team2StrategyUsed &&
-          team2StrategyTarget &&
-          team2StrategySelected
-        ) {
-          script += `\n## 팀 ${data.team2.name} 에서 ${team2StrategyTarget}곡에 스트래티지 카드를 사용하여 무작위 선곡인 ${team2StrategySelected}으로 변경되었습니다.`;
-        }
+        if (round.team1StrategyUsed) script += `\n${t1Message}\n`;
+        if (round.team2StrategyUsed) script += `\n${t2Message}\n`;
       }
 
+      //@@@@@@@@@@@@@@@@@@@@@@@@@
       return script;
     } else if (isRound4) {
       const team1Songs = round.team1Songs2 || ["", ""];
       const team2Songs = round.team2Songs2 || ["", ""];
-      const team1Banned = round.team1BannedSong4;
-      const team2Banned = round.team2BannedSong4;
+      const team1Banned = round.team1BannedSong4 || "";
+      const team2Banned = round.team2BannedSong4 || "";
 
+      // 상대 팀이 밴한 곡을 제외하고 플레이 가능한 자선곡 선택
       const team1PlayableSong =
         team1Songs.find((song) => song && song !== team2Banned) ||
-        team1Songs[0];
+        team1Songs[0] ||
+        "????";
       const team2PlayableSong =
         team2Songs.find((song) => song && song !== team1Banned) ||
-        team2Songs[0];
+        team2Songs[0] ||
+        "????";
 
-      return `# ${roundIdx + 1}라운드 출전선수 싱글배틀 방번호 ${
-        round.roomNumber || "??????"
-      } 로 입장해주세요
-* 팀 **${data.team1.name}** 의 **${
-        round.team1Player || ""
-      }** 선수는 자선곡 **${team1PlayableSong}** 을 **1번째로 골라주시고**, 지정곡 **${
-        round.stage3DesignatedSong || "????"
-      }** 을 **두번째로 골라주시기 바랍니다.**
-* 팀 **${data.team2.name}** 의 **${
-        round.team2Player || ""
-      }** 선수는 자선곡 **${team2PlayableSong}** 을 **1번째로 골라주시고**, 지정곡 **${
-        round.stage4DesignatedSong || "????"
-      }** 을 **두번째로 골라주시기 바랍니다.**
+      const room = round.roomNumber || "219219"; // 기본값 원하는 대로
+      const team1Name = data.team1.name || "X";
+      const team2Name = data.team2.name || "X";
+      const team1Player = round.team1Player || "X";
+      const team2Player = round.team2Player || "X";
+      const stage3 = round.stage3DesignatedSong || "????";
+      const stage4 = round.stage4DesignatedSong || "????";
 
-종료 후 나오는 리절트 창 촬영 부탁드립니다.`;
+      let script = "";
+
+      // 4TRACK 지정곡 안내
+      script += `# 4TRACK 지정곡 : ${stage3} / ${stage4}\n`;
+      script += `# ${
+        roundIdx + 1
+      }라운드 출전선수 싱글배틀 방번호 ${room} 로 입장해주세요\n`;
+
+      // 팀1 안내
+      script += `* 팀 **${team1Name}** 의 **${team1Player}** 선수는 자선곡 **${team1PlayableSong}** 을 **1번째로 골라주시고**, 지정곡 **${stage3}** 을 **두번째로 골라주시기 바랍니다.**\n`;
+
+      // 팀1 쪽 곡을 팀2가 밴한 경우 (team2BannedSong4 = 팀2가 밴한 팀1 곡)
+      if (team2Banned) {
+        script += `\n* 팀 **${team1Name}** 의 자선곡 **~~${team2Banned}~~** 는 밴 당하였습니다.\n\n`;
+      }
+
+      // 팀2 안내
+      script += `\n* 팀 **${team2Name}** 의 **${team2Player}** 선수는 자선곡 **${team2PlayableSong}** 을 **1번째로 골라주시고**, 지정곡 **${stage4}** 을 **두번째로 골라주시기 바랍니다.**\n`;
+
+      // 팀2 쪽 곡을 팀1이 밴한 경우 (team1BannedSong4 = 팀1이 밴한 팀2 곡)
+      if (team1Banned) {
+        script += `\n* 팀 **${team2Name}** 의 자선곡 **~~${team1Banned}~~** 는 밴 당하였습니다.\n`;
+      }
+
+      // 마지막 안내 문장
+      script += `\n# 종료 후 나오는 서브 스크린 결과창 촬영 부탁드립니다.\n`;
+
+      return script;
     } else {
-      return `# ${roundIdx + 1}라운드 출전 선수 아레나 방번호 ${
-        round.roomNumber || "??????"
-      } 로 입장해주세요
-* 팀 **${data.team1.name}** 의 **${round.team1Player || ""}** 선수
-* 팀 **${data.team2.name}** 의 **${round.team2Player || ""}** 선수
+      const room = round.roomNumber || "111999";
 
-종료 후 나오는 리절트 창 촬영 부탁드립니다.`;
+      const team1Name = data.team1.name || "X";
+      const team2Name = data.team2.name || "X";
+      const team1Player = round.team1Player || "X";
+      const team2Player = round.team2Player || "X";
+
+      const rawTeam1Songs = round.team1SongsLong || [];
+      const rawTeam2Songs = round.team2SongsLong || [];
+
+      // 상대팀 스트래티지 적용 후 최종 곡 리스트
+      const team1FinalSongs = rawTeam1Songs.map((song) => {
+        if (
+          round.team2StrategyUsed &&
+          round.team2StrategyTarget === song &&
+          round.team2StrategySelected
+        ) {
+          return round.team2StrategySelected;
+        }
+        return song;
+      });
+
+      const team2FinalSongs = rawTeam2Songs.map((song) => {
+        if (
+          round.team1StrategyUsed &&
+          round.team1StrategyTarget === song &&
+          round.team1StrategySelected
+        ) {
+          return round.team1StrategySelected;
+        }
+        return song;
+      });
+
+      let script = `# 2라운드 출전 선수 메가믹스 ${room} 로 입장해주세요\n`;
+
+      // 팀1 안내
+      script += `* 팀 **${team1Name}** 의 **${team1Player}** 선수는 자선곡인 다음 5곡을 선곡해주세요.\n`;
+      team1FinalSongs.forEach((song) => {
+        if (song && song.trim()) {
+          script += `  * **${song}**\n`;
+        }
+      });
+
+      script += `\n`;
+
+      // 팀2 안내
+      script += `* 팀 **${team2Name}** 의 **${team2Player}** 선수는 자선곡인 다음 5곡을 선곡해주세요.\n`;
+      team2FinalSongs.forEach((song) => {
+        if (song && song.trim()) {
+          script += `  * **${song}**\n`;
+        }
+      });
+
+      // ==== 스트래티지 멘트 ====
+      const t1HasStrategy =
+        round.team1StrategyUsed &&
+        !!round.team1StrategyTarget &&
+        !!round.team1StrategySelected;
+
+      const t2HasStrategy =
+        round.team2StrategyUsed &&
+        !!round.team2StrategyTarget &&
+        !!round.team2StrategySelected;
+
+      // if (!t1HasStrategy && !t2HasStrategy) {
+      //   // (스트래티지 미사용)
+      //   script += `\n## 스트래티지 카드는 사용되지 않았습니다.\n`;
+      // } else {
+      //   // 팀1 스트래티지
+      //   if (t1HasStrategy) {
+      //     if (round.team1StrategySelected === round.team1StrategyTarget) {
+      //       // (스트래티지 사용했으나 미변경)
+      //       script += `\n## 팀 ${team1Name} 에서 ${round.team1StrategyTarget} 곡에 스트래티지 카드를 사용하였으나, 선곡을 변경하지 않았습니다.\n`;
+      //     } else {
+      //       // (스트래티지 사용 후 변경)
+      //       script += `\n## 팀 ${team1Name} 에서 ${round.team1StrategyTarget} 곡에 스트래티지 카드를 사용하여 무작위 선곡인 ${round.team1StrategySelected} 으로 변경되었습니다.\n`;
+      //     }
+      //   }
+
+      //   // 팀2 스트래티지
+      //   if (t2HasStrategy) {
+      //     if (round.team2StrategySelected === round.team2StrategyTarget) {
+      //       // (스트래티지 사용했으나 미변경)
+      //       script += `\n## 팀 ${team2Name} 에서 ${round.team2StrategyTarget} 곡에 스트래티지 카드를 사용하였으나, 선곡을 변경하지 않았습니다.\n`;
+      //     } else {
+      //       // (스트래티지 사용 후 변경)
+      //       script += `\n## 팀 ${team2Name} 에서 ${round.team2StrategyTarget} 곡에 스트래티지 카드를 사용하여 무작위 선곡인 ${round.team2StrategySelected} 으로 변경되었습니다.\n`;
+      //     }
+      //   }
+      // }
+      //@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+      // 🔹 팀1 스트래티지 멘트
+      const t1Message = buildStrategyMessage(
+        data.team1.name,
+        round.team1StrategyUsed,
+        round.team1StrategyTarget || null,
+        round.team1StrategySelected || null
+      );
+
+      // 🔹 팀2 스트래티지 멘트
+      const t2Message = buildStrategyMessage(
+        data.team2.name,
+        round.team2StrategyUsed,
+        round.team2StrategyTarget || null,
+        round.team2StrategySelected || null
+      );
+
+      // 🔹 출력 규칙
+      if (!round.team1StrategyUsed && !round.team2StrategyUsed) {
+        script += `\n## 스트래티지 카드는 사용되지 않았습니다.\n`;
+      } else {
+        if (round.team1StrategyUsed) script += `\n${t1Message}\n`;
+        if (round.team2StrategyUsed) script += `\n${t2Message}\n`;
+      }
+
+      script += `\n# 종료 후 나오는 메인스크린 결과창 촬영 부탁드립니다.\n`;
+
+      return script;
     }
+
+    /*
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+    */
   };
   const generateOvertimeRecordingStartScript = () => {
     return `# 연장전 녹화 시작 안내
@@ -1829,7 +2545,7 @@ ${filtered.map((song) => `* ${song}`).join("\n")}`;
 * 양 팀의 세트 스코어가 동률이므로 연장전을 진행합니다.
 # 연장전 지정곡 : ${song}
 # 연장전 출전 선수 싱글배틀 방번호 ${room} 로 입장해주세요
-* 양 선수 모두 싱글 매치 진입후, **${song}** 을 골라주시고 2번째는 아무거나 골라주시기 바랍니다.
+* 양 선수 모두 싱글 매치 진입후, 1번째로 **${song}** 을 골라주시고 2번째는 아무거나 골라주시기 바랍니다.
 * 2ND TRACK~FINAL TRACK의 경우 플레이 하셔도 무방하오나 최종 결과엔 반영되지 않습니다.
   * 1ST TRACK 결과가 최종 결과에 반영됩니다.`;
   };
@@ -2571,6 +3287,27 @@ ${filtered.map((song) => `* ${song}`).join("\n")}`;
                   <ImageIcon className="h-4 w-4 mr-2" />
                   (밴픽 전) 사전 픽 선곡 목록 이미지 생성
                 </Button>
+                {data.rounds.map((round, roundIdx) => (
+                  <TabsContent key={roundIdx} value={`round${roundIdx + 1}`}>
+                    {/* ... */}
+
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        onClick={() => handleGenerateStrategyTeam1(roundIdx)}
+                      >
+                        1팀 스트래티지 카드 이미지
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() => handleGenerateStrategyTeam2(roundIdx)}
+                      >
+                        2팀 스트래티지 카드 이미지
+                      </Button>
+                    </div>
+                  </TabsContent>
+                ))}
+
                 <ScriptCard
                   title="녹화 시작 안내"
                   script={generateRecordingStartScript(roundIdx)}
@@ -2811,7 +3548,7 @@ ${filtered.map((song) => `* ${song}`).join("\n")}`;
                         {data[`team${teamIdx as 1 | 2}`].name || `팀${teamIdx}`}
                       </h4>
 
-                      {/* 스트레티지 사용 스위치 */}
+                      {/* 스트래티지 사용 스위치 */}
                       <div className="flex items-center gap-2">
                         <Switch
                           id={`r2-team${teamIdx}-strategy-switch`}
@@ -2833,16 +3570,16 @@ ${filtered.map((song) => `* ${song}`).join("\n")}`;
                           htmlFor={`r2-team${teamIdx}-strategy-switch`}
                           className="text-xs"
                         >
-                          스트레티지 카드 사용
+                          스트래티지 카드 사용
                         </Label>
                       </div>
 
                       {getStrategyUsed(data.rounds[1], teamIdx as 1 | 2) && (
                         <div className="space-y-2 pl-6">
-                          {/* 5곡 중에서 스트레티지 대상 곡 선택 */}
+                          {/* 5곡 중에서 스트래티지 대상 곡 선택 */}
                           <div>
                             <Label className="text-xs">
-                              스트레티지를 적용할 상대곡 (5곡 중 선택)
+                              스트래티지를 적용할 상대곡 (5곡 중 선택)
                             </Label>
                             <StrategyTargetDropdown
                               value={getStrategyTarget(
@@ -2867,10 +3604,10 @@ ${filtered.map((song) => `* ${song}`).join("\n")}`;
                             />
                           </div>
 
-                          {/* 17/18렙 후보 중에서 최종 스트레티지 곡 선택 */}
+                          {/* 17/18렙 후보 중에서 최종 스트래티지 곡 선택 */}
                           <div>
                             <Label className="text-xs">
-                              선택된 스트레티지 곡 (17/18렙 후보 중)
+                              선택된 스트래티지 곡 (17/18렙 후보 중)
                             </Label>
                             <StrategySelectedDropdown
                               value={getStrategySelected(
@@ -2890,7 +3627,7 @@ ${filtered.map((song) => `* ${song}`).join("\n")}`;
                                   value === "none" ? "" : value
                                 )
                               }
-                              placeholder="스트레티지 곡 선택"
+                              placeholder="스트래티지 곡 선택"
                             />
                           </div>
                         </div>
@@ -2918,6 +3655,57 @@ ${filtered.map((song) => `* ${song}`).join("\n")}`;
                 <ImageIcon className="h-4 w-4 mr-2" />
                 (밴픽 전) 사전 픽 선곡 목록 이미지 생성
               </Button>
+              {/* 2라운드 매믹@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ */}
+              {data.rounds.map((round, roundIdx) => (
+                <TabsContent key={roundIdx} value={`round${roundIdx + 1}`}>
+                  {/* ... */}
+
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      onClick={() => handleGenerateStrategyTeam1(roundIdx)}
+                    >
+                      1팀 스트래티지 카드 이미지
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => handleGenerateStrategyTeam2(roundIdx)}
+                    >
+                      2팀 스트래티지 카드 이미지
+                    </Button>
+                  </div>
+                  <div className="flex gap-2 mt-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleGenerateRound2Lv17Team1}
+                    >
+                      2R 1팀 Lv17 (3장)
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleGenerateRound2Lv18Team1}
+                    >
+                      2R 1팀 Lv18 (3장)
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleGenerateRound2Lv17Team2}
+                    >
+                      2R 2팀 Lv17 (3장)
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleGenerateRound2Lv18Team2}
+                    >
+                      2R 2팀 Lv18 (3장)
+                    </Button>
+                  </div>
+                </TabsContent>
+              ))}
               <ScriptCard
                 title="녹화 시작 안내"
                 script={generateRecordingStartScript(1)}
@@ -3173,6 +3961,26 @@ ${filtered.map((song) => `* ${song}`).join("\n")}`;
                 <ImageIcon className="h-4 w-4 mr-2" />
                 (밴픽 전) 사전 픽 선곡 목록 이미지 생성
               </Button>
+              {data.rounds.map((round, roundIdx) => (
+                <TabsContent key={roundIdx} value={`round${roundIdx + 1}`}>
+                  {/* ... */}
+
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      onClick={() => handleGenerateStrategyTeam1(roundIdx)}
+                    >
+                      1팀 스트래티지 카드 이미지
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => handleGenerateStrategyTeam2(roundIdx)}
+                    >
+                      2팀 스트래티지 카드 이미지
+                    </Button>
+                  </div>
+                </TabsContent>
+              ))}
               <ScriptCard
                 title="녹화 시작 안내"
                 script={generateRecordingStartScript(3)}
