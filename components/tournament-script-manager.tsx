@@ -55,6 +55,7 @@ import { drawSongCard } from "@/lib/tournament/drawSongCard";
 import { generateTitleScrollGif } from "@/lib/tournament/generateTitleScrollGif";
 import { Team } from "@/lib/model/team";
 import { getTypeLabel } from "@/lib/tournament/getTypeLabel";
+import { drawSongOptionCard } from "@/lib/tournament/drawSongOptionCard";
 
 const fetcher = async (url: string) => {
   const res = await fetch(url);
@@ -219,6 +220,15 @@ export function TournamentScriptManager({ onBack }: { onBack: () => void }) {
   const [selectedSongIndex, setSelectedSongIndex] = useState<number | null>(
     null
   );
+
+  const [singleCardTitleLines, setSingleCardTitleLines] = useState<1 | 2 | 3>(
+    2
+  );
+  const [singleCardTitleFontSize, setSingleCardTitleFontSize] =
+    useState<number>(66);
+  const [singleCardTitleLineGap, setSingleCardTitleLineGap] =
+    useState<number>(8); // optional
+
   const jacketsRef = useRef<(HTMLImageElement | null)[]>([]);
 
   const { data: songData } = useSWR<{ chartData: ChartData[] }>(
@@ -396,11 +406,7 @@ export function TournamentScriptManager({ onBack }: { onBack: () => void }) {
     ctx.font =
       "bold 28px system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
 
-    ctx.fillText(
-      `2라운드 스트래티지 - ${teamLabel}`,
-      canvasWidth / 2,
-      24
-    );
+    ctx.fillText(`2라운드 스트래티지 - ${teamLabel}`, canvasWidth / 2, 24);
 
     // 부제 (원하면 지워도 됨)
     ctx.font =
@@ -604,6 +610,73 @@ export function TournamentScriptManager({ onBack }: { onBack: () => void }) {
     link.href = dataUrl;
     link.download = fileName;
     link.click();
+  };
+  
+  const exportSingleOptionCardImage = (
+    song: SongEntry,
+    jacketImg: HTMLImageElement | null,
+    fileName: string,
+    backgroundImg?: HTMLImageElement | null,
+    titleOptions?: {
+      titleMaxLines?: 1 | 2 | 3;
+      titleFontSize?: number; // 1080 기준 px
+      titleLineGap?: number; // 1080 기준 px
+    }
+  ) => {
+    const baseWidth = 1080;
+    const baseHeight = 380;
+
+    const canvas = document.createElement("canvas");
+    canvas.width = baseWidth;
+    canvas.height = baseHeight;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    // 투명 초기화
+    ctx.clearRect(0, 0, baseWidth, baseHeight);
+
+    // ✅ 옵션 카드 그리기 (새 함수)
+    drawSongOptionCard(ctx, song, 0, 0, jacketImg, {
+      cardWidth: baseWidth,
+      cardHeight: baseHeight,
+      jacketSize: 300,
+      team1Name: data.team1.name,
+      backgroundImg,
+      titleMaxLines: titleOptions?.titleMaxLines,
+      titleFontSize: titleOptions?.titleFontSize,
+      titleLineGap: titleOptions?.titleLineGap,
+    });
+
+    const dataUrl = canvas.toDataURL("image/png");
+    const link = document.createElement("a");
+    link.href = dataUrl;
+    link.download = fileName;
+    link.click();
+  };
+
+  const handleDownloadOptionCard = () => {
+    if (selectedSongIndex === null) return;
+    const song = currentSongsForRound[selectedSongIndex];
+    if (!song) return;
+
+    const jacketImg = jacketsRef.current[selectedSongIndex] || null;
+    const safeTeam = song.team || "team";
+    const safePlayer = song.player || "player";
+
+    exportSingleOptionCardImage(
+      song,
+      jacketImg,
+      `round${
+        imageRoundIdx + 1
+      }_${safeTeam}_${safePlayer}_opt-${singleCardTitleLines}L_${singleCardTitleFontSize}px.png`,
+      cardBgImg,
+      {
+        titleMaxLines: singleCardTitleLines,
+        titleFontSize: singleCardTitleFontSize,
+        titleLineGap: singleCardTitleLineGap,
+      }
+    );
   };
 
   const handleDownloadTitleGif = async () => {
@@ -2879,6 +2952,74 @@ ${filtered.map((song) => `* ${song}`).join("\n")}`;
                 >
                   <Download className="h-4 w-4 mr-2" />
                   선택 곡 카드 다운로드
+                </Button>
+                {/* ✅ 옵션 입력 UI */}
+                <div className="flex flex-wrap items-center gap-2 border rounded-md px-2 py-1">
+                  <Label className="text-xs">제목 옵션</Label>
+
+                  {/* 줄 수 선택 */}
+                  <Select
+                    value={String(singleCardTitleLines)}
+                    onValueChange={(v) =>
+                      setSingleCardTitleLines(Number(v) as 1 | 2 | 3)
+                    }
+                  >
+                    <SelectTrigger className="w-[84px] h-8 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="1">1줄</SelectItem>
+                      <SelectItem value="2">2줄</SelectItem>
+                      <SelectItem value="3">3줄</SelectItem>
+                    </SelectContent>
+                  </Select>
+
+                  {/* 폰트 크기(px) */}
+                  <div className="flex items-center gap-1">
+                    <Input
+                      type="number"
+                      className="w-[92px] h-8 text-xs"
+                      value={singleCardTitleFontSize}
+                      min={10}
+                      max={140}
+                      step={2}
+                      onChange={(e) =>
+                        setSingleCardTitleFontSize(Number(e.target.value))
+                      }
+                    />
+                    <span className="text-[11px] text-muted-foreground">
+                      px
+                    </span>
+                  </div>
+
+                  {/* (선택) 줄 간격 */}
+                  <div className="flex items-center gap-1">
+                    <Input
+                      type="number"
+                      className="w-[80px] h-8 text-xs"
+                      value={singleCardTitleLineGap}
+                      min={0}
+                      max={40}
+                      step={1}
+                      onChange={(e) =>
+                        setSingleCardTitleLineGap(Number(e.target.value))
+                      }
+                    />
+                    <span className="text-[11px] text-muted-foreground">
+                      gap
+                    </span>
+                  </div>
+                </div>
+                <Button
+                  variant="outline"
+                  onClick={handleDownloadOptionCard}
+                  disabled={
+                    currentSongsForRound.length === 0 ||
+                    selectedSongIndex === null
+                  }
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  옵션 카드 다운로드
                 </Button>
                 <Button
                   variant="outline"
