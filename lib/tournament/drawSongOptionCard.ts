@@ -476,10 +476,14 @@ const drawTitleUserControlled = (
 
   // 7) 중앙 정렬 렌더
   const totalH = lineBlockHeight(lines.length, fontSize, lineGap);
-  const startY = areaY + Math.max(0, (areaH - totalH) / 2);
-  const centerX = areaX + areaW / 2;
 
-  ctx.textAlign = "center";
+
+  // ✅ startY만 살짝 올림 (영역/줄 계산은 그대로)
+  const TITLE_TOP_PADDING = 1 * scale; // 고정된 천장 여백(원하는 값)
+  const startY = areaY + TITLE_TOP_PADDING;
+  const textX = areaX;
+
+  ctx.textAlign = "left";
   ctx.textBaseline = "top";
   const outline = Math.max(2, Math.min(6, Math.round(fontSize * 0.12)));
 
@@ -491,8 +495,8 @@ const drawTitleUserControlled = (
 
   lines.forEach((line, idx) => {
     const yy = startY + idx * (fontSize + lineGap);
-    ctx.strokeText(line, centerX, yy);
-    ctx.fillText(line, centerX, yy);
+    ctx.strokeText(line, textX, yy);
+    ctx.fillText(line, textX, yy);
   });
 };
 
