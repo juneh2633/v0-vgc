@@ -481,7 +481,11 @@ const drawTitleUserControlled = (
 
   ctx.textAlign = "center";
   ctx.textBaseline = "top";
-  ctx.lineWidth = 6 * scale;
+  const outline = Math.max(2, Math.min(6, Math.round(fontSize * 0.12)));
+
+  ctx.lineWidth = outline;
+  ctx.lineJoin = "round"; // ✅ miter 뾰족 튐 방지
+  ctx.miterLimit = 2; // ✅ 혹시 남는 튐 추가 방지
   ctx.strokeStyle = "#000000";
   ctx.fillStyle = color;
 
