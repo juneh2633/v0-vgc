@@ -10,7 +10,7 @@ import {
 import { TYPE_COLORS_DATA } from "../constant/color";
 import { SongEntry } from "../model/songEntry";
 
-// 10진수 색상 → "#RRGGBB" 변환
+// 10진수 색상 → "#RRGGBB" 변환 .
 const toHexColor = (n: number) => "#" + n.toString(16).padStart(6, "0");
 
 export function drawSongCard(
