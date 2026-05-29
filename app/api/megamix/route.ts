@@ -5,7 +5,7 @@ export async function GET(request: NextRequest) {
   const minLevel = searchParams.get("minLevel") || "17"
   const maxLevel = searchParams.get("maxLevel") || "20"
   const minVersion = searchParams.get("minVersion") || "1"
-  const maxVersion = searchParams.get("maxVersion") || "6"
+  const maxVersion = searchParams.get("maxVersion") || "7"
 
   const apiUrl = `https://juneh2633.ddns.net/chart/megamix?minLevel=${minLevel}&maxLevel=${maxLevel}&minVersion=${minVersion}&maxVersion=${maxVersion}`
 

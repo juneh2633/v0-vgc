@@ -32,6 +32,7 @@ const VERSION_NAMES: Record<number, string> = {
   4: "HEAVENLY HAVEN",
   5: "VIVID WAVE",
   6: "EXCEED GEAR",
+  7: "NABLA",
 }
 
 const LEVELS = [17, 18, 19, 20]
@@ -42,7 +43,7 @@ export function MegamixBrowser() {
   const [selectedVersion, setSelectedVersion] = useState<number | "all">("all")
 
   const { data, isLoading, error } = useSWR<MegamixResponse>(
-    "/api/megamix?minLevel=17&maxLevel=20&minVersion=1&maxVersion=6",
+    "/api/megamix?minLevel=17&maxLevel=20&minVersion=1&maxVersion=7",
     fetcher,
   )
 
@@ -69,7 +70,7 @@ export function MegamixBrowser() {
   // Group charts by version
   const chartsByVersion = useMemo(() => {
     const grouped: Record<number, MegamixChart[]> = {}
-    for (let v = 1; v <= 6; v++) {
+    for (let v = 1; v <= 7; v++) {
       grouped[v] = []
     }
 

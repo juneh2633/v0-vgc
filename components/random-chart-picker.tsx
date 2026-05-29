@@ -19,6 +19,7 @@ const VERSION_MAP: Record<number, string> = {
   4: "Heavenly Haven",
   5: "Vivid Wave",
   6: "Exceed Gear",
+  7: "Nabla",
 }
 
 export function RandomChartPicker() {
@@ -150,7 +151,7 @@ export function RandomChartPicker() {
                     type="number"
                     placeholder="1"
                     min="1"
-                    max="6"
+                    max="7"
                     value={formData.minVersion}
                     onChange={handleInputChange}
                   />
@@ -164,15 +165,15 @@ export function RandomChartPicker() {
                     id="maxVersion"
                     name="maxVersion"
                     type="number"
-                    placeholder="6"
+                    placeholder="7"
                     min="1"
-                    max="6"
+                    max="7"
                     value={formData.maxVersion}
                     onChange={handleInputChange}
                   />
                 </div>
               </div>
-              <p className="text-xs text-muted-foreground mt-1">1: Booth ~ 6: Exceed Gear</p>
+              <p className="text-xs text-muted-foreground mt-1">1: Booth ~ 7: Nabla</p>
             </div>
           </div>
 
