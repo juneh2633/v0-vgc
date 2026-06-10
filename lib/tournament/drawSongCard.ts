@@ -49,10 +49,24 @@ export function drawSongCard(
     if (!title) return "";
     if (!song.info?.type) return title;
 
-    const typeUpper = song.info.type.toUpperCase().trim();
-    const suffix = " " + typeUpper;
+    const infoType = song.info.type.toLowerCase().trim();
+    const typeEntry = TYPE_COLORS_DATA.find(
+      (t) =>
+        t.typeName.toLowerCase() === infoType ||
+        t.typeShortName.toLowerCase() === infoType
+    );
+    const suffixes = [
+      song.info.type,
+      typeEntry?.typeName,
+      typeEntry?.typeShortName,
+    ]
+      .filter(Boolean)
+      .map((type) => ` ${type!.toUpperCase().trim()}`);
 
-    if (title.toUpperCase().endsWith(suffix)) {
+    const titleUpper = title.toUpperCase();
+    const suffix = suffixes.find((candidate) => titleUpper.endsWith(candidate));
+
+    if (suffix) {
       return title.slice(0, -suffix.length);
     }
     return title;
