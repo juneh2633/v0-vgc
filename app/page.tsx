@@ -106,7 +106,7 @@ export default function Home() {
               메인으로 돌아가기
             </Button>
           </div>
-          <TournamentScriptManager />
+          <TournamentScriptManager onBack={() => setMode("menu")} />
         </div>
       )}
     </main>

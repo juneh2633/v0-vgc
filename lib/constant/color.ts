@@ -8,5 +8,6 @@ export const TYPE_COLORS_DATA = [
   { typeName: "heavenly", typeShortName: "hvn", color: 45296 },
   { typeName: "vivid", typeShortName: "vvd", color: 16261747 },
   { typeName: "exceed", typeShortName: "xcd", color: 1351423 },
-  { typeName: "ultimate", typeShortName: "ult", color: 16768343 }
+  { typeName: "ultimate", typeShortName: "ult", color: 16768343 },
+  { typeName: "nabla", typeShortName: "nbl", color: 9821443 }
 ]

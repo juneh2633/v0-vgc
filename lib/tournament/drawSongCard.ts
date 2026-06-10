@@ -368,7 +368,16 @@ export function drawSongCard(
 
   // === 7. 난이도 배지 ===
   if (song.info?.level && song.info?.type) {
-    const badgeText = `${song.info.type.toUpperCase()} ${song.info.level}`;
+    const shortName = song.info.type.toLowerCase();
+    const typeColorEntry = TYPE_COLORS_DATA.find(
+      (t) =>
+        t.typeShortName?.toLowerCase?.() === shortName ||
+        t.typeName?.toLowerCase?.() === shortName
+    );
+    const difficultyShort =
+      typeColorEntry?.typeShortName?.toUpperCase() ??
+      song.info.type.toUpperCase();
+    const badgeText = `${difficultyShort} ${song.info.level}`;
 
     // 폰트 크게
     const BADGE_FONT_SIZE = 22 * s;
@@ -389,12 +398,6 @@ export function drawSongCard(
     const badgeY = y + 280 * s;
 
     // 색상은 기존 TYPE_COLORS_DATA 를 그대로 활용
-    const shortName = song.info.type.toLowerCase();
-    const typeColorEntry = TYPE_COLORS_DATA.find(
-      (t) =>
-        t.typeShortName?.toLowerCase?.() === shortName ||
-        t.typeName?.toLowerCase?.() === shortName
-    );
     ctx.fillStyle = typeColorEntry
       ? toHexColor(typeColorEntry.color)
       : "#e53935";

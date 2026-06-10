@@ -116,6 +116,8 @@ export function ThemeDrawer({ data, onBack }: ThemeDrawerProps) {
       heavenly: "HVN",
       vivid: "VVD",
       exceed: "XCD",
+      ultimate: "ULT",
+      nabla: "NBL",
     }
     return typeMap[type.toLowerCase()] || type.toUpperCase()
   }
