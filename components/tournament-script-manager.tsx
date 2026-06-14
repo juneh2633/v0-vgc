@@ -2285,12 +2285,14 @@ export function TournamentScriptManager({ onBack }: { onBack: () => void }) {
 ${filtered.map((song) => `* ${song}`).join("\n")}`;
     }
 
-    // ✅ 2라운드: 17렙 / 18렙 후보에서 선택
+    // ✅ 2라운드: 마이너 17/18, 메이저 18/19 후보에서 선택
     if (roundIdx === 1) {
       const options17 =
         (teamIdx === 1 ? round.team1Strategy17 : round.team2Strategy17) || [];
       const options18 =
         (teamIdx === 1 ? round.team1Strategy18 : round.team2Strategy18) || [];
+      const strategyLevel17Label = getRound2StrategyLevelLabel(17);
+      const strategyLevel18Label = getRound2StrategyLevelLabel(18);
 
       const has17 = options17.some((o) => o && o.trim());
       const has18 = options18.some((o) => o && o.trim());
@@ -2302,14 +2304,14 @@ ${filtered.map((song) => `* ${song}`).join("\n")}`;
 ## 아래 곡들 중에서 **상대 자선곡에 사용할 스트래티지 곡**을 1곡 선택해주시길 바랍니다.\n`;
 
       if (has17) {
-        script += `\n### 17레벨 후보\n${options17
+        script += `\n### ${strategyLevel17Label}레벨 후보\n${options17
           .filter((s) => s && s.trim())
           .map((s) => `* ${s}`)
           .join("\n")}`;
       }
 
       if (has18) {
-        script += `\n\n### 18레벨 후보\n${options18
+        script += `\n\n### ${strategyLevel18Label}레벨 후보\n${options18
           .filter((s) => s && s.trim())
           .map((s) => `* ${s}`)
           .join("\n")}`;
