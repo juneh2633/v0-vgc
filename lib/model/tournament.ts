@@ -8,6 +8,8 @@ export type SongInfoMap = Record<string, SongInfo>
 export interface TournamentData {
   team1: Team
   team2: Team
+  recordingUploadUrl: string
+  tournamentDivision: "minor" | "major"
   rounds: [RoundData, RoundData, RoundData, RoundData]
   songInfoMap: SongInfoMap
   overtime: OvertimeData

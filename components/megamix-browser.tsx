@@ -35,11 +35,13 @@ const VERSION_NAMES: Record<number, string> = {
   7: "NABLA",
 }
 
-const LEVELS = [17, 18, 19, 20]
+const LEVEL_GROUPS = [17, 18, 19, 20]
+
+const getLevelGroup = (level: number) => Math.floor(level)
 
 export function MegamixBrowser() {
   const [searchQuery, setSearchQuery] = useState("")
-  const [selectedLevels, setSelectedLevels] = useState<number[]>([17, 18, 19, 20])
+  const [selectedLevels, setSelectedLevels] = useState<number[]>(LEVEL_GROUPS)
   const [selectedVersion, setSelectedVersion] = useState<number | "all">("all")
 
   const { data, isLoading, error } = useSWR<MegamixResponse>(
@@ -60,7 +62,7 @@ export function MegamixBrowser() {
         chart.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
         (chart.artist && chart.artist.toLowerCase().includes(searchQuery.toLowerCase()))
 
-      const matchesLevel = selectedLevels.includes(chart.level)
+      const matchesLevel = selectedLevels.includes(getLevelGroup(chart.level))
       const matchesVersion = selectedVersion === "all" || chart.version === selectedVersion
 
       return matchesSearch && matchesLevel && matchesVersion
@@ -88,7 +90,7 @@ export function MegamixBrowser() {
   }
 
   const getLevelColor = (level: number) => {
-    switch (level) {
+    switch (getLevelGroup(level)) {
       case 17:
         return "bg-yellow-500"
       case 18:
@@ -183,7 +185,7 @@ export function MegamixBrowser() {
         <div>
           <Label className="text-sm font-medium mb-3 block">레벨 필터</Label>
           <div className="space-y-2">
-            {LEVELS.map((level) => (
+            {LEVEL_GROUPS.map((level) => (
               <div key={level} className="flex items-center space-x-2">
                 <Checkbox
                   id={`level-${level}`}
@@ -199,7 +201,7 @@ export function MegamixBrowser() {
                   >
                     {level}
                   </span>
-                  Level {level}
+                  Level {level}.x
                 </label>
               </div>
             ))}
@@ -252,7 +254,7 @@ function ChartCard({
       />
       {/* Level Badge */}
       <div
-        className={`absolute top-1 right-1 w-6 h-6 rounded flex items-center justify-center text-white text-xs font-bold ${getLevelColor(chart.level)}`}
+        className={`absolute top-1 right-1 min-w-7 h-6 px-1 rounded flex items-center justify-center text-white text-xs font-bold ${getLevelColor(chart.level)}`}
       >
         {chart.level}
       </div>

@@ -15,6 +15,8 @@ export interface RoundData {
   team2Songs2?: [string, string]
   team1BannedSong4?: string
   team2BannedSong4?: string
+  team1ArenaPlayer?: string
+  team2ArenaPlayer?: string
   team1DesignatedSong?: string
   team2DesignatedSong?: string
   stage3DesignatedSong?: string

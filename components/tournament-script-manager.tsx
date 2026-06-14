@@ -57,6 +57,9 @@ import { Team } from "@/lib/model/team";
 import { getTypeLabel } from "@/lib/tournament/getTypeLabel";
 import { drawSongOptionCard } from "@/lib/tournament/drawSongOptionCard";
 
+const DEFAULT_RECORDING_UPLOAD_URL =
+  "https://drive.google.com/drive/folders/1HCiwJYMPH-sRQ0gxGQGj-PmeM2GRwHYi";
+
 const fetcher = async (url: string) => {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Failed to fetch: ${res.status}`);
@@ -80,6 +83,8 @@ const defaultRoundData = (): RoundData => ({
   team2Songs2: ["", ""],
   team1BannedSong4: "",
   team2BannedSong4: "",
+  team1ArenaPlayer: "",
+  team2ArenaPlayer: "",
   team1DesignatedSong: "",
   team2DesignatedSong: "",
   stage3DesignatedSong: "",
@@ -108,6 +113,8 @@ const defaultOvertimeData = (): OvertimeData => ({
 const defaultData = (): TournamentData => ({
   team1: { name: "", players: ["", "", ""] },
   team2: { name: "", players: ["", "", ""] },
+  recordingUploadUrl: DEFAULT_RECORDING_UPLOAD_URL,
+  tournamentDivision: "minor",
   rounds: [
     defaultRoundData(),
     defaultRoundData(),
@@ -185,7 +192,7 @@ function buildStrategyMessage(
   }
 
   // 정상 변경됨
-  return `## 팀 ${teamName} 에서 ${target} 곡에 스트래티지 카드를 사용하여 무작위 선곡인 ${selected} 으로 변경되었습니다.`;
+  return `## 팀 ${teamName} 에서 ${target} 곡에 스트래티지 카드를 사용하여 ${selected} 으로 변경되었습니다.`;
 }
 
 export function TournamentScriptManager({ onBack }: { onBack: () => void }) {
@@ -276,6 +283,13 @@ export function TournamentScriptManager({ onBack }: { onBack: () => void }) {
     [allCharts, searchQuery, levelFilter]
   );
 
+  const getRound2StrategyLevelLabel = (levelSlot: 17 | 18) => {
+    if (data.tournamentDivision === "major") {
+      return levelSlot === 17 ? 18 : 19;
+    }
+    return levelSlot;
+  };
+
   const copyToClipboard = async (text: string, id: string) => {
     await navigator.clipboard.writeText(text);
     setCopiedId(id);
@@ -328,11 +342,12 @@ export function TournamentScriptManager({ onBack }: { onBack: () => void }) {
   ) => {
     const roundIdx = 1; // 2라운드 고정
     const songs = buildRound2StrategySongsForTeamAndLevel(teamIdx, levelGroup);
+    const levelLabel = getRound2StrategyLevelLabel(levelGroup);
 
     if (songs.length === 0) {
       setNotification({
         type: "error",
-        message: `2라운드 ${teamIdx}팀 Lv${levelGroup} 스트래티지 곡이 없습니다.`,
+        message: `2라운드 ${teamIdx}팀 Lv${levelLabel} 스트래티지 곡이 없습니다.`,
       });
       return;
     }
@@ -1634,17 +1649,20 @@ export function TournamentScriptManager({ onBack }: { onBack: () => void }) {
         24
       );
 
-      // 컬럼 라벨 (Lv17 / Lv18)
+      const lowerLevelLabel = getRound2StrategyLevelLabel(17);
+      const upperLevelLabel = getRound2StrategyLevelLabel(18);
+
+      // 컬럼 라벨
       ctx.textAlign = "left";
       ctx.textBaseline = "top";
       ctx.font =
         "bold 22px system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
 
       ctx.fillStyle = "#60a5fa";
-      ctx.fillText("Lv17 스트래티지", col1X, 70);
+      ctx.fillText(`Lv${lowerLevelLabel} 스트래티지`, col1X, 70);
 
       ctx.fillStyle = "#f97373";
-      ctx.fillText("Lv18 스트래티지", col2X, 70);
+      ctx.fillText(`Lv${upperLevelLabel} 스트래티지`, col2X, 70);
 
       // 자켓 로딩용 전체 목록
       const allSongs = [...songs17, ...songs18];
@@ -1923,6 +1941,10 @@ export function TournamentScriptManager({ onBack }: { onBack: () => void }) {
     rows.push(`team,team2Player1,${escapeCSV(data.team2.players[0])},,,,,,`);
     rows.push(`team,team2Player2,${escapeCSV(data.team2.players[1])},,,,,,`);
     rows.push(`team,team2Player3,${escapeCSV(data.team2.players[2])},,,,,,`);
+    rows.push(
+      `team,recordingUploadUrl,${escapeCSV(data.recordingUploadUrl)},,,,,,`
+    );
+    rows.push(`team,tournamentDivision,${data.tournamentDivision},,,,,,`);
 
     data.rounds.forEach((round, idx) => {
       const section = `round${idx + 1}`;
@@ -2096,6 +2118,10 @@ export function TournamentScriptManager({ onBack }: { onBack: () => void }) {
           } else if (key.startsWith("team2Player")) {
             const idx = Number.parseInt(key.replace("team2Player", "")) - 1;
             if (idx >= 0 && idx < 3) newData.team2.players[idx] = value;
+          } else if (key === "recordingUploadUrl") {
+            newData.recordingUploadUrl = value || DEFAULT_RECORDING_UPLOAD_URL;
+          } else if (key === "tournamentDivision") {
+            newData.tournamentDivision = value === "major" ? "major" : "minor";
           }
         } else if (section.startsWith("round")) {
           const roundIdx = Number.parseInt(section.replace("round", "")) - 1;
@@ -2182,9 +2208,10 @@ export function TournamentScriptManager({ onBack }: { onBack: () => void }) {
   };
 
   const generateRecordingEndScript = (roundIdx: number) => {
+    const uploadUrl = data.recordingUploadUrl || DEFAULT_RECORDING_UPLOAD_URL;
     return `# 녹화 종료 안내
 * ${roundIdx + 1}라운드 출전 선수분들 녹화 종료 부탁드립니다.
-* 녹화하신 영상을 https://drive.google.com/drive/folders/1HCiwJYMPH-sRQ0gxGQGj-PmeM2GRwHYi 으로 파일 이름을 **플레이어_라운드** 형식으로 수정하여 전송 부탁드립니다.
+* 녹화하신 영상을 ${uploadUrl} 으로 파일 이름을 **플레이어_라운드** 형식으로 수정하여 전송 부탁드립니다.
 -# 예시) 고갱_${roundIdx + 1}라운드`;
   };
 
@@ -2604,9 +2631,10 @@ ${filtered.map((song) => `* ${song}`).join("\n")}`;
   };
 
   const generateOvertimeRecordingEndScript = () => {
+    const uploadUrl = data.recordingUploadUrl || DEFAULT_RECORDING_UPLOAD_URL;
     return `# 연장전 녹화 종료 안내
 * 연장전 출전 선수분들 녹화 종료 부탁드립니다.
-* 녹화하신 영상을 https://drive.google.com/drive/folders/1HCiwJYMPH-sRQ0gxGQGj-PmeM2GRwHYi 으로 파일 이름을 **플레이어_연장전** 형식으로 수정하여 전송 부탁드립니다.
+* 녹화하신 영상을 ${uploadUrl} 으로 파일 이름을 **플레이어_연장전** 형식으로 수정하여 전송 부탁드립니다.
 -# 예시) 고갱_연장전`;
   };
 
@@ -2617,10 +2645,56 @@ ${filtered.map((song) => `* ${song}`).join("\n")}`;
     return `# 연장전 안내
 * 양 팀의 세트 스코어가 동률이므로 연장전을 진행합니다.
 # 연장전 지정곡 : ${song}
-# 연장전 출전 선수 싱글배틀 방번호 ${room} 로 입장해주세요
-* 양 선수 모두 싱글 매치 진입후, 1번째로 **${song}** 을 골라주시고 2번째는 아무거나 골라주시기 바랍니다.
+# 연장전 출전 선수 아레나배틀 방번호 ${room} 로 입장해주세요
 * 2ND TRACK~FINAL TRACK의 경우 플레이 하셔도 무방하오나 최종 결과엔 반영되지 않습니다.
   * 1ST TRACK 결과가 최종 결과에 반영됩니다.`;
+  };
+
+  const generateRound4ArenaEntryScript = () => {
+    const round = data.rounds[3];
+    const team1Songs = round.team1Songs2 || ["", ""];
+    const team2Songs = round.team2Songs2 || ["", ""];
+    const team1Banned = round.team1BannedSong4 || "";
+    const team2Banned = round.team2BannedSong4 || "";
+
+    const team1PlayableSong =
+      team1Songs.find((song) => song && song !== team2Banned) ||
+      team1Songs[0] ||
+      "미정";
+    const team2PlayableSong =
+      team2Songs.find((song) => song && song !== team1Banned) ||
+      team2Songs[0] ||
+      "미정";
+
+    const room = round.roomNumber || "219219";
+    const team1Name = data.team1.name || "1팀";
+    const team2Name = data.team2.name || "2팀";
+    const team1Player = round.team1Player || "미정";
+    const team2Player = round.team2Player || "미정";
+    const team1ArenaPlayer = round.team1ArenaPlayer || "미정";
+    const team2ArenaPlayer = round.team2ArenaPlayer || "미정";
+    const stage3 = round.stage3DesignatedSong || "미정";
+    const stage4 = round.stage4DesignatedSong || "미정";
+
+    let script = `# 4TRACK 지정곡 : ${stage3} / ${stage4}\n`;
+    script += `# 4라운드 출전선수 아레나배틀 방번호 ${room} 로 입장해주세요\n`;
+    script += `팀 ${team1Name} 의 ${team1Player} 선수는 자선곡 ${team1PlayableSong} 을 1번째로 골라주시고,\n`;
+    script += `${team1ArenaPlayer} 선수는 지정곡 ${stage3} 을 두번째로 골라주시기 바랍니다.\n`;
+
+    if (team2Banned) {
+      script += `\n팀 ${team1Name} 의 자선곡 ${team2Banned} 는 밴 당하였습니다.\n`;
+    }
+
+    script += `\n\n팀 ${team2Name} 의 ${team2Player} 선수는 자선곡 ${team2PlayableSong} 을 1번째로 골라주시고,\n`;
+    script += `${team2ArenaPlayer} 선수는 지정곡 ${stage4} 을 두번째로 골라주시기 바랍니다.\n`;
+
+    if (team1Banned) {
+      script += `\n팀 ${team2Name} 의 자선곡 ${team1Banned} 는 밴 당하였습니다.\n`;
+    }
+
+    script += `\n종료 후 나오는 서브 스크린 결과창 촬영 부탁드립니다.`;
+
+    return script;
   };
 
   const BanSelectDropdown = ({
@@ -3043,12 +3117,13 @@ ${filtered.map((song) => `* ${song}`).join("\n")}`;
       </Dialog>
 
       <Tabs defaultValue="teams" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-6">
+        <TabsList className="grid w-full grid-cols-8">
           <TabsTrigger value="teams">팀 정보</TabsTrigger>
           <TabsTrigger value="round1">1라운드</TabsTrigger>
           <TabsTrigger value="round2">2라운드</TabsTrigger>
           <TabsTrigger value="round3">3라운드</TabsTrigger>
-          <TabsTrigger value="round4">4라운드</TabsTrigger>
+          <TabsTrigger value="round4">4라운드-싱글</TabsTrigger>
+          <TabsTrigger value="round4arena">4라운드-아레나</TabsTrigger>
           <TabsTrigger value="overtime">연장전</TabsTrigger>
           <TabsTrigger value="common">공통 멘트</TabsTrigger>
         </TabsList>
@@ -3094,6 +3169,52 @@ ${filtered.map((song) => `* ${song}`).join("\n")}`;
               </Card>
             ))}
           </div>
+          <Card>
+            <CardHeader>
+              <CardTitle>대회 설정</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center justify-between gap-4 rounded-lg border p-3">
+                <div>
+                  <Label htmlFor="tournament-division-major">
+                    2라운드 레벨 구간
+                  </Label>
+                  <p className="text-sm text-muted-foreground">
+                    {data.tournamentDivision === "major"
+                      ? "메이저: Lv18 / Lv19"
+                      : "마이너: Lv17 / Lv18"}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-muted-foreground">마이너</span>
+                  <Switch
+                    id="tournament-division-major"
+                    checked={data.tournamentDivision === "major"}
+                    onCheckedChange={(checked) =>
+                      setData((prev) => ({
+                        ...prev,
+                        tournamentDivision: checked ? "major" : "minor",
+                      }))
+                    }
+                  />
+                  <span className="text-sm text-muted-foreground">메이저</span>
+                </div>
+              </div>
+              <div>
+                <Label>녹화 영상 업로드 링크</Label>
+                <Input
+                  value={data.recordingUploadUrl}
+                  onChange={(e) =>
+                    setData((prev) => ({
+                      ...prev,
+                      recordingUploadUrl: e.target.value,
+                    }))
+                  }
+                  placeholder={DEFAULT_RECORDING_UPLOAD_URL}
+                />
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
 
         {/* Round 1 & 3 Tabs (2v2) */}
@@ -3605,7 +3726,9 @@ ${filtered.map((song) => `* ${song}`).join("\n")}`;
 
                       <div className="grid grid-cols-2 gap-2">
                         <div>
-                          <Label className="text-xs">스트래티지 17렙</Label>
+                          <Label className="text-xs">
+                            스트래티지 {getRound2StrategyLevelLabel(17)}렙
+                          </Label>
                           {[0, 1, 2].map((optIdx) => (
                             <div key={optIdx} className="mt-1">
                               <SongInputField
@@ -3616,7 +3739,9 @@ ${filtered.map((song) => `* ${song}`).join("\n")}`;
                                     ] as string[]
                                   )?.[optIdx] || ""
                                 }
-                                placeholder={`17렙 ${optIdx + 1}`}
+                                placeholder={`${getRound2StrategyLevelLabel(
+                                  17
+                                )}렙 ${optIdx + 1}`}
                                 onClick={() =>
                                   openSongSearch(
                                     1,
@@ -3636,7 +3761,9 @@ ${filtered.map((song) => `* ${song}`).join("\n")}`;
                           ))}
                         </div>
                         <div>
-                          <Label className="text-xs">스트래티지 18렙</Label>
+                          <Label className="text-xs">
+                            스트래티지 {getRound2StrategyLevelLabel(18)}렙
+                          </Label>
                           {[0, 1, 2].map((optIdx) => (
                             <div key={optIdx} className="mt-1">
                               <SongInputField
@@ -3647,7 +3774,9 @@ ${filtered.map((song) => `* ${song}`).join("\n")}`;
                                     ] as string[]
                                   )?.[optIdx] || ""
                                 }
-                                placeholder={`18렙 ${optIdx + 1}`}
+                                placeholder={`${getRound2StrategyLevelLabel(
+                                  18
+                                )}렙 ${optIdx + 1}`}
                                 onClick={() =>
                                   openSongSearch(
                                     1,
@@ -3748,7 +3877,9 @@ ${filtered.map((song) => `* ${song}`).join("\n")}`;
                           {/* 17/18렙 후보 중에서 최종 스트래티지 곡 선택 */}
                           <div>
                             <Label className="text-xs">
-                              선택된 스트래티지 곡 (17/18렙 후보 중)
+                              선택된 스트래티지 곡 (
+                              {getRound2StrategyLevelLabel(17)}/
+                              {getRound2StrategyLevelLabel(18)}렙 후보 중)
                             </Label>
                             <StrategySelectedDropdown
                               value={getStrategySelected(
@@ -3821,28 +3952,28 @@ ${filtered.map((song) => `* ${song}`).join("\n")}`;
                       variant="outline"
                       onClick={handleGenerateRound2Lv17Team1}
                     >
-                      2R 1팀 Lv17 (3장)
+                      2R 1팀 Lv{getRound2StrategyLevelLabel(17)} (3장)
                     </Button>
                     <Button
                       size="sm"
                       variant="outline"
                       onClick={handleGenerateRound2Lv18Team1}
                     >
-                      2R 1팀 Lv18 (3장)
+                      2R 1팀 Lv{getRound2StrategyLevelLabel(18)} (3장)
                     </Button>
                     <Button
                       size="sm"
                       variant="outline"
                       onClick={handleGenerateRound2Lv17Team2}
                     >
-                      2R 2팀 Lv17 (3장)
+                      2R 2팀 Lv{getRound2StrategyLevelLabel(17)} (3장)
                     </Button>
                     <Button
                       size="sm"
                       variant="outline"
                       onClick={handleGenerateRound2Lv18Team2}
                     >
-                      2R 2팀 Lv18 (3장)
+                      2R 2팀 Lv{getRound2StrategyLevelLabel(18)} (3장)
                     </Button>
                   </div>
                 </TabsContent>
@@ -4102,26 +4233,6 @@ ${filtered.map((song) => `* ${song}`).join("\n")}`;
                 <ImageIcon className="h-4 w-4 mr-2" />
                 (밴픽 전) 사전 픽 선곡 목록 이미지 생성
               </Button>
-              {data.rounds.map((round, roundIdx) => (
-                <TabsContent key={roundIdx} value={`round${roundIdx + 1}`}>
-                  {/* ... */}
-
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      onClick={() => handleGenerateStrategyTeam1(roundIdx)}
-                    >
-                      1팀 스트래티지 카드 이미지
-                    </Button>
-                    <Button
-                      variant="outline"
-                      onClick={() => handleGenerateStrategyTeam2(roundIdx)}
-                    >
-                      2팀 스트래티지 카드 이미지
-                    </Button>
-                  </div>
-                </TabsContent>
-              ))}
               <ScriptCard
                 title="녹화 시작 안내"
                 script={generateRecordingStartScript(3)}
@@ -4141,6 +4252,263 @@ ${filtered.map((song) => `* ${song}`).join("\n")}`;
                 title="녹화 종료 안내"
                 script={generateRecordingEndScript(3)}
                 id="r4-rec-end"
+              />
+            </div>
+          </div>
+        </TabsContent>
+        {/* Round 4 Arena Tab */}
+        <TabsContent value="round4arena" className="space-y-4">
+          <div className="grid lg:grid-cols-2 gap-4">
+            <div className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">공통 설정</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div>
+                    <Label>방 번호</Label>
+                    <Input
+                      value={data.rounds[3].roomNumber}
+                      onChange={(e) =>
+                        updateRound(3, "roomNumber", e.target.value)
+                      }
+                      placeholder="219219"
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="border-purple-500/30 bg-purple-500/5">
+                <CardHeader>
+                  <CardTitle className="text-lg text-purple-400">
+                    주최측 지정곡
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div>
+                    <Label className="text-xs">
+                      3스테이지 지정곡 - 클릭하여 검색
+                    </Label>
+                    <SongInputField
+                      value={data.rounds[3].stage3DesignatedSong || ""}
+                      placeholder="3스테이지 지정곡"
+                      onClick={() => openSongSearch(3, "stage3DesignatedSong")}
+                      onClear={() => clearSong(3, "stage3DesignatedSong")}
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">
+                      4스테이지 지정곡 - 클릭하여 검색
+                    </Label>
+                    <SongInputField
+                      value={data.rounds[3].stage4DesignatedSong || ""}
+                      placeholder="4스테이지 지정곡"
+                      onClick={() => openSongSearch(3, "stage4DesignatedSong")}
+                      onClear={() => clearSong(3, "stage4DesignatedSong")}
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="border-blue-500/30 bg-blue-500/5">
+                <CardHeader>
+                  <CardTitle className="text-lg text-blue-400">
+                    사전 입력
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {[1, 2].map((teamIdx) => (
+                    <div
+                      key={teamIdx}
+                      className="space-y-3 p-3 bg-muted/30 rounded-lg"
+                    >
+                      <h4 className="font-medium">
+                        팀{" "}
+                        {data[`team${teamIdx as 1 | 2}`].name || `${teamIdx}`}
+                      </h4>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <Label className="text-xs">출전 선수</Label>
+                          <Select
+                            value={
+                              teamIdx === 1
+                                ? data.rounds[3].team1Player || ""
+                                : data.rounds[3].team2Player || ""
+                            }
+                            onValueChange={(value) =>
+                              updateRound(
+                                3,
+                                teamIdx === 1 ? "team1Player" : "team2Player",
+                                value
+                              )
+                            }
+                          >
+                            <SelectTrigger className="h-8 text-sm">
+                              <SelectValue placeholder="선수 선택" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {data[`team${teamIdx as 1 | 2}`].players
+                                .filter(Boolean)
+                                .map((player, idx) => (
+                                  <SelectItem key={idx} value={player}>
+                                    {player}
+                                  </SelectItem>
+                                ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div>
+                          <Label className="text-xs">
+                            지정곡 선택 보조 선수
+                          </Label>
+                          <Select
+                            value={
+                              teamIdx === 1
+                                ? data.rounds[3].team1ArenaPlayer || ""
+                                : data.rounds[3].team2ArenaPlayer || ""
+                            }
+                            onValueChange={(value) =>
+                              updateRound(
+                                3,
+                                teamIdx === 1
+                                  ? "team1ArenaPlayer"
+                                  : "team2ArenaPlayer",
+                                value
+                              )
+                            }
+                          >
+                            <SelectTrigger className="h-8 text-sm">
+                              <SelectValue placeholder="선수 선택" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {data[`team${teamIdx as 1 | 2}`].players
+                                .filter(Boolean)
+                                .map((player, idx) => (
+                                  <SelectItem key={idx} value={player}>
+                                    {player}
+                                  </SelectItem>
+                                ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+
+                      <div>
+                        <Label className="text-xs">
+                          선곡 (2곡) - 클릭하여 검색
+                        </Label>
+                        <div className="space-y-1">
+                          {[0, 1].map((songIdx) => (
+                            <SongInputField
+                              key={songIdx}
+                              value={
+                                (
+                                  data.rounds[3][
+                                    `team${teamIdx}Songs2` as keyof RoundData
+                                  ] as string[]
+                                )?.[songIdx] || ""
+                              }
+                              placeholder={`곡 ${songIdx + 1} 클릭하여 검색`}
+                              onClick={() =>
+                                openSongSearch(
+                                  3,
+                                  `team${teamIdx}Songs2`,
+                                  songIdx
+                                )
+                              }
+                              onClear={() =>
+                                clearSong(3, `team${teamIdx}Songs2`, songIdx)
+                              }
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+
+              <Card className="border-orange-500/30 bg-orange-500/5">
+                <CardHeader>
+                  <CardTitle className="text-lg text-orange-400">
+                    경기 진행 중
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {[1, 2].map((teamIdx) => (
+                    <div
+                      key={teamIdx}
+                      className="space-y-3 p-3 bg-muted/30 rounded-lg"
+                    >
+                      <h4 className="font-medium">
+                        팀{" "}
+                        {data[`team${teamIdx as 1 | 2}`].name || `${teamIdx}`}
+                      </h4>
+
+                      <div>
+                        <Label className="text-xs">
+                          밴할 곡 (상대 팀 선곡에서 선택)
+                        </Label>
+                        <BanSelectDropdown
+                          value={
+                            teamIdx === 1
+                              ? data.rounds[3].team1BannedSong4 || ""
+                              : data.rounds[3].team2BannedSong4 || ""
+                          }
+                          songs={getOpponentSongs(
+                            data.rounds[3],
+                            teamIdx as 1 | 2,
+                            3
+                          )}
+                          onChange={(value) =>
+                            updateRound(
+                              3,
+                              teamIdx === 1
+                                ? "team1BannedSong4"
+                                : "team2BannedSong4",
+                              value === "none" ? "" : value
+                            )
+                          }
+                          placeholder="밴할 곡 선택"
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+            </div>
+
+            <div className="space-y-3">
+              <Button
+                variant="outline"
+                className="w-full bg-transparent"
+                onClick={() => generateSongListImage(3)}
+              >
+                <ImageIcon className="h-4 w-4 mr-2" />
+                선곡 목록 이미지 생성
+              </Button>
+              <Button
+                variant="outline"
+                className="w-full bg-transparent"
+                onClick={() => generatePrePickImage(3)}
+              >
+                <ImageIcon className="h-4 w-4 mr-2" />
+                (밴픽 전) 사전 픽 선곡 목록 이미지 생성
+              </Button>
+              <ScriptCard
+                title="4라운드 아레나 입장 안내"
+                script={generateRound4ArenaEntryScript()}
+                id="r4-arena-new"
+              />
+              <ScriptCard
+                title="녹화 시작 안내"
+                script={generateRecordingStartScript(3)}
+                id="r4-arena-rec-start"
+              />
+              <ScriptCard
+                title="녹화 종료 안내"
+                script={generateRecordingEndScript(3)}
+                id="r4-arena-rec-end"
               />
             </div>
           </div>
