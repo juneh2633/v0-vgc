@@ -2678,15 +2678,15 @@ ${filtered.map((song) => `* ${song}`).join("\n")}`;
 
     let script = `# 4TRACK 지정곡 : ${stage3} / ${stage4}\n`;
     script += `# 4라운드 출전선수 아레나배틀 방번호 ${room} 로 입장해주세요\n`;
-    script += `팀 ${team1Name} 의 ${team1Player} 선수는 자선곡 ${team1PlayableSong} 을 1번째로 골라주시고,\n`;
-    script += `${team1ArenaPlayer} 선수는 지정곡 ${stage3} 을 두번째로 골라주시기 바랍니다.\n`;
+    script += `팀 ${team1Name} 의 ${team1Player} 선수는 자선곡 ${team1PlayableSong} 을 골라주시고,\n`;
+    script += `${team1ArenaPlayer} 선수는 지정곡 ${stage3} 을 골라주시기 바랍니다.\n`;
 
     if (team2Banned) {
       script += `\n팀 ${team1Name} 의 자선곡 ${team2Banned} 는 밴 당하였습니다.\n`;
     }
 
-    script += `\n\n팀 ${team2Name} 의 ${team2Player} 선수는 자선곡 ${team2PlayableSong} 을 1번째로 골라주시고,\n`;
-    script += `${team2ArenaPlayer} 선수는 지정곡 ${stage4} 을 두번째로 골라주시기 바랍니다.\n`;
+    script += `\n\n팀 ${team2Name} 의 ${team2Player} 선수는 자선곡 ${team2PlayableSong} 을 골라주시고,\n`;
+    script += `${team2ArenaPlayer} 선수는 지정곡 ${stage4} 을 골라주시기 바랍니다.\n`;
 
     if (team1Banned) {
       script += `\n팀 ${team2Name} 의 자선곡 ${team1Banned} 는 밴 당하였습니다.\n`;
