@@ -8,7 +8,7 @@ import { ArrowLeft, Plus, Download, Trash2, Search, X } from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import type { Theme, ThemeSong, ChartData } from "@/lib/types"
+import type { Theme, ThemeSong, ChartData, ThemeData } from "@/lib/types"
 import { exportToCSV, downloadCSV } from "@/lib/csv-utils"
 import useSWR from "swr"
 import Image from "next/image"
@@ -24,6 +24,7 @@ const fetcher = async (url: string) => {
 
 interface ThemeEditorProps {
   onBack: () => void
+  initialData?: ThemeData
 }
 
 interface FlattenedChart {
@@ -36,9 +37,20 @@ interface FlattenedChart {
   jacket: string
 }
 
-export function ThemeEditor({ onBack }: ThemeEditorProps) {
-  const [themes, setThemes] = useState<Theme[]>([])
-  const [activeTheme, setActiveTheme] = useState<string>("")
+const normalizeInitialThemes = (initialData?: ThemeData): Theme[] =>
+  initialData?.themes.map((theme, themeIdx) => ({
+    ...theme,
+    songs: theme.songs.map((song, songIdx) => ({
+      ...song,
+      comment: song.comment || "",
+      weight: song.weight || 1,
+      uniqueId: song.uniqueId || `${song.chartIdx}-${themeIdx}-${songIdx}`,
+    })),
+  })) || []
+
+export function ThemeEditor({ onBack, initialData }: ThemeEditorProps) {
+  const [themes, setThemes] = useState<Theme[]>(() => normalizeInitialThemes(initialData))
+  const [activeTheme, setActiveTheme] = useState<string>(() => initialData?.themes[0]?.name || "")
   const [newThemeName, setNewThemeName] = useState("")
   const [isAddingTheme, setIsAddingTheme] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")

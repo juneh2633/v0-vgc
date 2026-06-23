@@ -6,16 +6,17 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { ArrowLeft, Shuffle, RotateCcw } from "lucide-react"
+import { ArrowLeft, Shuffle, RotateCcw, Pencil } from "lucide-react"
 import type { ThemeData, ThemeSong } from "@/lib/types"
 import Image from "next/image"
 
 interface ThemeDrawerProps {
   data: ThemeData
   onBack: () => void
+  onEdit?: () => void
 }
 
-export function ThemeDrawer({ data, onBack }: ThemeDrawerProps) {
+export function ThemeDrawer({ data, onBack, onEdit }: ThemeDrawerProps) {
   const [selectedTheme, setSelectedTheme] = useState<string>("")
   const [songCount, setSongCount] = useState<number>(1)
   const [drawnSongs, setDrawnSongs] = useState<ThemeSong[]>([])
@@ -180,10 +181,18 @@ export function ThemeDrawer({ data, onBack }: ThemeDrawerProps) {
         </div>
       )}
 
-      <Button variant="ghost" onClick={onBack} className="mb-6">
-        <ArrowLeft className="w-4 h-4 mr-2" />
-        돌아가기
-      </Button>
+      <div className="mb-6 flex items-center justify-between gap-2">
+        <Button variant="ghost" onClick={onBack}>
+          <ArrowLeft className="w-4 h-4 mr-2" />
+          돌아가기
+        </Button>
+        {onEdit && (
+          <Button variant="outline" onClick={onEdit}>
+            <Pencil className="w-4 h-4 mr-2" />
+            수정하기
+          </Button>
+        )}
+      </div>
 
       <div className="max-w-2xl mx-auto space-y-6">
         {/* Settings Card */}
