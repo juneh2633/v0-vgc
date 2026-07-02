@@ -38,6 +38,7 @@ import Image from "next/image";
 import type { ChartData } from "@/lib/types";
 import { Switch } from "@/components/ui/switch";
 import GIF from "gif.js";
+import JSZip from "jszip";
 import { RoundData } from "@/lib/model/round";
 import { OvertimeData } from "@/lib/model/overtimeData";
 import { SongInfoMap, TournamentData } from "@/lib/model/tournament";
@@ -628,10 +629,9 @@ export function TournamentScriptManager({ onBack }: { onBack: () => void }) {
     link.click();
   };
   
-  const exportSingleOptionCardImage = (
+  const generateSingleOptionCardDataUrl = (
     song: SongEntry,
     jacketImg: HTMLImageElement | null,
-    fileName: string,
     backgroundImg?: HTMLImageElement | null,
     titleOptions?: {
       titleMaxLines?: 1 | 2 | 3;
@@ -647,7 +647,7 @@ export function TournamentScriptManager({ onBack }: { onBack: () => void }) {
     canvas.height = baseHeight;
 
     const ctx = canvas.getContext("2d");
-    if (!ctx) return;
+    if (!ctx) return null;
 
     // 투명 초기화
     ctx.clearRect(0, 0, baseWidth, baseHeight);
@@ -664,7 +664,28 @@ export function TournamentScriptManager({ onBack }: { onBack: () => void }) {
       titleLineGap: titleOptions?.titleLineGap,
     });
 
-    const dataUrl = canvas.toDataURL("image/png");
+    return canvas.toDataURL("image/png");
+  };
+
+  const exportSingleOptionCardImage = (
+    song: SongEntry,
+    jacketImg: HTMLImageElement | null,
+    fileName: string,
+    backgroundImg?: HTMLImageElement | null,
+    titleOptions?: {
+      titleMaxLines?: 1 | 2 | 3;
+      titleFontSize?: number;
+      titleLineGap?: number;
+    }
+  ) => {
+    const dataUrl = generateSingleOptionCardDataUrl(
+      song,
+      jacketImg,
+      backgroundImg,
+      titleOptions
+    );
+    if (!dataUrl) return;
+
     const link = document.createElement("a");
     link.href = dataUrl;
     link.download = fileName;
@@ -710,15 +731,16 @@ export function TournamentScriptManager({ onBack }: { onBack: () => void }) {
     );
   };
 
-  const handleDownloadAllOptionCards = () => {
+  const handleDownloadAllOptionCards = async () => {
+    const zip = new JSZip();
+
     currentSongsForRound.forEach((song, songIndex) => {
       const fileName = getSingleCardFileName(songIndex);
       if (!fileName) return;
 
-      exportSingleOptionCardImage(
+      const dataUrl = generateSingleOptionCardDataUrl(
         song,
         jacketsRef.current[songIndex] || null,
-        fileName,
         cardBgImg,
         {
           titleMaxLines: singleCardTitleLines,
@@ -726,7 +748,18 @@ export function TournamentScriptManager({ onBack }: { onBack: () => void }) {
           titleLineGap: singleCardTitleLineGap,
         }
       );
+      if (!dataUrl) return;
+
+      zip.file(fileName, dataUrl.split(",")[1], { base64: true });
     });
+
+    const zipBlob = await zip.generateAsync({ type: "blob" });
+    const zipUrl = URL.createObjectURL(zipBlob);
+    const link = document.createElement("a");
+    link.href = zipUrl;
+    link.download = `round${imageRoundIdx + 1}_cards.zip`;
+    link.click();
+    URL.revokeObjectURL(zipUrl);
   };
 
   const handleDownloadTitleGif = async () => {
@@ -3150,7 +3183,7 @@ ${filtered.map((song) => `* ${song}`).join("\n")}`;
                   disabled={currentSongsForRound.length === 0}
                 >
                   <Download className="h-4 w-4 mr-2" />
-                  옵션 카드 일괄 다운로드
+                  옵션 카드 ZIP 다운로드
                 </Button>
                 <Button
                   variant="outline"
