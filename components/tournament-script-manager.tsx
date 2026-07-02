@@ -670,21 +670,32 @@ export function TournamentScriptManager({ onBack }: { onBack: () => void }) {
     link.click();
   };
 
+  const getSingleCardFileName = (songIndex: number) => {
+    const song = currentSongsForRound[songIndex];
+    if (!song) return null;
+
+    const teamNumber = song.team === data.team2.name ? 2 : 1;
+    const songNumber =
+      currentSongsForRound
+        .slice(0, songIndex + 1)
+        .filter((entry) => entry.team === song.team).length;
+
+    return `round${imageRoundIdx + 1}_${teamNumber}_${songNumber}.png`;
+  };
+
   const handleDownloadOptionCard = () => {
     if (selectedSongIndex === null) return;
     const song = currentSongsForRound[selectedSongIndex];
     if (!song) return;
 
     const jacketImg = jacketsRef.current[selectedSongIndex] || null;
-    const safeTeam = song.team || "team";
-    const safePlayer = song.player || "player";
+    const fileName = getSingleCardFileName(selectedSongIndex);
+    if (!fileName) return;
 
     exportSingleOptionCardImage(
       song,
       jacketImg,
-      `round${
-        imageRoundIdx + 1
-      }_${safeTeam}_${safePlayer}_opt-${singleCardTitleLines}L_${singleCardTitleFontSize}px.png`,
+      fileName,
       cardBgImg,
       {
         titleMaxLines: singleCardTitleLines,
@@ -692,6 +703,25 @@ export function TournamentScriptManager({ onBack }: { onBack: () => void }) {
         titleLineGap: singleCardTitleLineGap,
       }
     );
+  };
+
+  const handleDownloadAllOptionCards = () => {
+    currentSongsForRound.forEach((song, songIndex) => {
+      const fileName = getSingleCardFileName(songIndex);
+      if (!fileName) return;
+
+      exportSingleOptionCardImage(
+        song,
+        jacketsRef.current[songIndex] || null,
+        fileName,
+        cardBgImg,
+        {
+          titleMaxLines: singleCardTitleLines,
+          titleFontSize: singleCardTitleFontSize,
+          titleLineGap: singleCardTitleLineGap,
+        }
+      );
+    });
   };
 
   const handleDownloadTitleGif = async () => {
@@ -722,13 +752,13 @@ export function TournamentScriptManager({ onBack }: { onBack: () => void }) {
     if (!song) return;
 
     const jacketImg = jacketsRef.current[selectedSongIndex] || null;
-    const safeTeam = song.team || "team";
-    const safePlayer = song.player || "player";
+    const fileName = getSingleCardFileName(selectedSongIndex);
+    if (!fileName) return;
 
     exportSingleCardImage(
       song,
       jacketImg,
-      `round${imageRoundIdx + 1}_${safeTeam}_${safePlayer}.png`,
+      fileName,
       cardBgImg
     );
   };
@@ -3096,6 +3126,14 @@ ${filtered.map((song) => `* ${song}`).join("\n")}`;
                 >
                   <Download className="h-4 w-4 mr-2" />
                   옵션 카드 다운로드
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={handleDownloadAllOptionCards}
+                  disabled={currentSongsForRound.length === 0}
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  옵션 카드 일괄 다운로드
                 </Button>
                 <Button
                   variant="outline"
