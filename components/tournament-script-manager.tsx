@@ -326,6 +326,7 @@ export function TournamentScriptManager({ onBack }: { onBack: () => void }) {
 
         const songEntry: SongEntry = {
           team: teamLabel,
+          teamNumber: teamIdx,
           player: "",
           songName: name,
           info,
@@ -674,11 +675,15 @@ export function TournamentScriptManager({ onBack }: { onBack: () => void }) {
     const song = currentSongsForRound[songIndex];
     if (!song) return null;
 
-    const teamNumber = song.team === data.team2.name ? 2 : 1;
+    const teamNumber = song.teamNumber ?? (song.team === data.team2.name ? 2 : 1);
     const songNumber =
       currentSongsForRound
         .slice(0, songIndex + 1)
-        .filter((entry) => entry.team === song.team).length;
+        .filter(
+          (entry) =>
+            (entry.teamNumber ??
+              (entry.team === data.team2.name ? 2 : 1)) === teamNumber
+        ).length;
 
     return `round${imageRoundIdx + 1}_${teamNumber}_${songNumber}.png`;
   };
@@ -814,6 +819,7 @@ export function TournamentScriptManager({ onBack }: { onBack: () => void }) {
     // 3) SongEntry 배열로 변환 (플레이어 이름은 카드에서 안 쓰이므로 빈 문자열로 둠)
     const team1Songs: SongEntry[] = team1Base.map(({ name, idx }) => ({
       team: data.team1.name,
+      teamNumber: 1,
       player: "", // 플레이어 표시 안 하기로 해서 비워 둠
       songName: name,
       info: isRound13
@@ -826,6 +832,7 @@ export function TournamentScriptManager({ onBack }: { onBack: () => void }) {
 
     const team2Songs: SongEntry[] = team2Base.map(({ name, idx }) => ({
       team: data.team2.name,
+      teamNumber: 2,
       player: "",
       songName: name,
       info: isRound13
@@ -1071,6 +1078,7 @@ export function TournamentScriptManager({ onBack }: { onBack: () => void }) {
 
         songs.push({
           team: data.team1.name,
+          teamNumber: 1,
           player: team1Players[displayIdx] || "",
           songName: finalSong,
           info,
@@ -1101,6 +1109,7 @@ export function TournamentScriptManager({ onBack }: { onBack: () => void }) {
 
         songs.push({
           team: data.team2.name,
+          teamNumber: 2,
           player: team2Players[displayIdx] || "",
           songName: finalSong,
           info,
@@ -1141,6 +1150,7 @@ export function TournamentScriptManager({ onBack }: { onBack: () => void }) {
 
         songs.push({
           team: data.team1.name,
+          teamNumber: 1,
           player: team1Players[0] || "",
           songName: finalSong,
           info,
@@ -1172,6 +1182,7 @@ export function TournamentScriptManager({ onBack }: { onBack: () => void }) {
 
         songs.push({
           team: data.team2.name,
+          teamNumber: 2,
           player: team2Players[0] || "",
           songName: finalSong,
           info,
@@ -1200,6 +1211,7 @@ export function TournamentScriptManager({ onBack }: { onBack: () => void }) {
         const info = getSongInfoByField("team1Songs2", idx);
         songs.push({
           team: data.team1.name,
+          teamNumber: 1,
           player: team1Players[0] || "", // 4라운드는 1명
           songName: name,
           info,
@@ -1212,6 +1224,7 @@ export function TournamentScriptManager({ onBack }: { onBack: () => void }) {
         const info = getSongInfoByField("team2Songs2", idx);
         songs.push({
           team: data.team2.name,
+          teamNumber: 2,
           player: team2Players[0] || "",
           songName: name,
           info,
@@ -1225,6 +1238,7 @@ export function TournamentScriptManager({ onBack }: { onBack: () => void }) {
           data.songInfoMap[`round${roundIdx}_stage3DesignatedSong`] || null;
         songs.push({
           team: data.team1.name,
+          teamNumber: 1,
           player: "지정곡",
           songName: round.stage3DesignatedSong,
           info,
@@ -1237,6 +1251,7 @@ export function TournamentScriptManager({ onBack }: { onBack: () => void }) {
           data.songInfoMap[`round${roundIdx}_stage4DesignatedSong`] || null;
         songs.push({
           team: data.team2.name,
+          teamNumber: 2,
           player: "지정곡",
           songName: round.stage4DesignatedSong,
           info,
@@ -1509,6 +1524,7 @@ export function TournamentScriptManager({ onBack }: { onBack: () => void }) {
 
           return {
             team: teamName,
+            teamNumber: teamIdx,
             player: "",
             songName: name,
             info,
@@ -1610,6 +1626,7 @@ export function TournamentScriptManager({ onBack }: { onBack: () => void }) {
 
             return {
               team: teamLabel,
+              teamNumber: teamIdx,
               player: "",
               songName: name,
               info,
