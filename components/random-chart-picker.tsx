@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Loader2, Music, AlertCircle, Sparkles } from "lucide-react"
+import { Loader2, Music, AlertCircle, Sparkles, Copy, Check } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const VERSION_MAP: Record<number, string> = {
@@ -28,6 +28,7 @@ export function RandomChartPicker() {
   const [error, setError] = useState<string | null>(null)
   const [isAnimating, setIsAnimating] = useState(false)
   const [showResults, setShowResults] = useState(false)
+  const [copiedChartIndex, setCopiedChartIndex] = useState<number | null>(null)
 
   const [formData, setFormData] = useState({
     minLevel: "",
@@ -98,6 +99,18 @@ export function RandomChartPicker() {
       return `${dateStr.substring(0, 4)}-${dateStr.substring(4, 6)}-${dateStr.substring(6, 8)}`
     }
     return dateStr
+  }
+
+  const formatSpreadsheetDate = (dateStr: string) => {
+    const formatted = formatDate(dateStr)
+    return formatted.replace(/[.-]/g, "/")
+  }
+
+  const copyChartForSpreadsheet = async (chart: RandomChart, index: number) => {
+    const text = `${chart.title}\n${formatSpreadsheetDate(chart.date)}`
+    await navigator.clipboard.writeText(text)
+    setCopiedChartIndex(index)
+    setTimeout(() => setCopiedChartIndex(null), 2000)
   }
 
   return (
@@ -292,6 +305,25 @@ export function RandomChartPicker() {
                     </div>
                   )}
                 </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="mt-4 w-full"
+                  onClick={() => copyChartForSpreadsheet(chart, index)}
+                >
+                  {copiedChartIndex === index ? (
+                    <>
+                      <Check className="mr-2 h-4 w-4" />
+                      복사됨
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="mr-2 h-4 w-4" />
+                      곡명·날짜 복사
+                    </>
+                  )}
+                </Button>
               </CardContent>
             </Card>
           ))}
