@@ -709,6 +709,31 @@ export function TournamentScriptManager({ onBack }: { onBack: () => void }) {
     return `round${imageRoundIdx + 1}_${teamNumber}_${songNumber}.png`;
   };
 
+  const getJacketFileName = (songIndex: number) => {
+    const cardFileName = getSingleCardFileName(songIndex);
+    if (!cardFileName) return null;
+
+    return cardFileName.replace(/\.png$/, "_jacket.png");
+  };
+
+  const getJacketDataUrl = (jacketImg: HTMLImageElement | null) => {
+    if (!jacketImg) return null;
+
+    const width = jacketImg.naturalWidth || jacketImg.width;
+    const height = jacketImg.naturalHeight || jacketImg.height;
+    if (!width || !height) return null;
+
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+
+    ctx.drawImage(jacketImg, 0, 0, width, height);
+    return canvas.toDataURL("image/png");
+  };
+
   const handleDownloadOptionCard = () => {
     if (selectedSongIndex === null) return;
     const song = currentSongsForRound[selectedSongIndex];
@@ -758,6 +783,28 @@ export function TournamentScriptManager({ onBack }: { onBack: () => void }) {
     const link = document.createElement("a");
     link.href = zipUrl;
     link.download = `round${imageRoundIdx + 1}_cards.zip`;
+    link.click();
+    URL.revokeObjectURL(zipUrl);
+  };
+
+  const handleDownloadAllJackets = async () => {
+    const zip = new JSZip();
+
+    currentSongsForRound.forEach((_, songIndex) => {
+      const fileName = getJacketFileName(songIndex);
+      if (!fileName) return;
+
+      const dataUrl = getJacketDataUrl(jacketsRef.current[songIndex] || null);
+      if (!dataUrl) return;
+
+      zip.file(fileName, dataUrl.split(",")[1], { base64: true });
+    });
+
+    const zipBlob = await zip.generateAsync({ type: "blob" });
+    const zipUrl = URL.createObjectURL(zipBlob);
+    const link = document.createElement("a");
+    link.href = zipUrl;
+    link.download = `round${imageRoundIdx + 1}_jackets.zip`;
     link.click();
     URL.revokeObjectURL(zipUrl);
   };
@@ -3184,6 +3231,14 @@ ${filtered.map((song) => `* ${song}`).join("\n")}`;
                 >
                   <Download className="h-4 w-4 mr-2" />
                   옵션 카드 ZIP 다운로드
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={handleDownloadAllJackets}
+                  disabled={currentSongsForRound.length === 0}
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  Jacket ZIP 다운로드
                 </Button>
                 <Button
                   variant="outline"
