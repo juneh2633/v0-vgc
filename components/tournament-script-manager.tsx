@@ -696,7 +696,8 @@ export function TournamentScriptManager({ onBack }: { onBack: () => void }) {
     const song = currentSongsForRound[songIndex];
     if (!song) return null;
 
-    const teamNumber = song.teamNumber ?? (song.team === data.team2.name ? 2 : 1);
+    const teamNumber =
+      song.teamNumber ?? (song.team === data.team2.name ? 2 : 1);
     const songNumber =
       currentSongsForRound
         .slice(0, songIndex + 1)
@@ -709,11 +710,93 @@ export function TournamentScriptManager({ onBack }: { onBack: () => void }) {
     return `round${imageRoundIdx + 1}_${teamNumber}_${songNumber}.png`;
   };
 
+  const getTournamentJacketItems = () => {
+    const items: {
+      roundIdx: number;
+      teamNumber: 1 | 2;
+      songNumber: number;
+      info: SongInfo | null;
+    }[] = [];
+
+    const addSongs = (
+      roundIdx: number,
+      teamNumber: 1 | 2,
+      field: keyof RoundData,
+      songs?: string[]
+    ) => {
+      (songs || []).forEach((songName, index) => {
+        if (!songName?.trim()) return;
+        items.push({
+          roundIdx,
+          teamNumber,
+          songNumber: index + 1,
+          info:
+            data.songInfoMap[`round${roundIdx}_${String(field)}_${index}`] ||
+            null,
+        });
+      });
+    };
+
+    data.rounds.forEach((round, roundIdx) => {
+      if (roundIdx === 0 || roundIdx === 2) {
+        addSongs(roundIdx, 1, "team1Songs", round.team1Songs);
+        addSongs(roundIdx, 2, "team2Songs", round.team2Songs);
+        return;
+      }
+
+      if (roundIdx === 1) {
+        addSongs(roundIdx, 1, "team1SongsLong", round.team1SongsLong);
+        addSongs(roundIdx, 2, "team2SongsLong", round.team2SongsLong);
+        return;
+      }
+
+      if (roundIdx === 3) {
+        addSongs(roundIdx, 1, "team1Songs2", round.team1Songs2);
+        addSongs(roundIdx, 2, "team2Songs2", round.team2Songs2);
+
+        if (round.stage3DesignatedSong?.trim()) {
+          items.push({
+            roundIdx,
+            teamNumber: 1,
+            songNumber: 3,
+            info: data.songInfoMap[`round${roundIdx}_stage3DesignatedSong`] || null,
+          });
+        }
+
+        if (round.stage4DesignatedSong?.trim()) {
+          items.push({
+            roundIdx,
+            teamNumber: 2,
+            songNumber: 3,
+            info: data.songInfoMap[`round${roundIdx}_stage4DesignatedSong`] || null,
+          });
+        }
+      }
+    });
+
+    return items;
+  };
+
   const getJacketFileName = (songIndex: number) => {
     const cardFileName = getSingleCardFileName(songIndex);
     if (!cardFileName) return null;
 
     return cardFileName.replace(/\.png$/, "_jacket.png");
+  };
+
+  const loadJacketImage = (info: SongInfo | null) => {
+    return new Promise<HTMLImageElement | null>((resolve) => {
+      const src = info?.jacketBase64 || info?.jacket;
+      if (!src) return resolve(null);
+
+      const img = new window.Image();
+      img.crossOrigin = "anonymous";
+      img.onload = () => resolve(img);
+      img.onerror = () => resolve(null);
+      img.src = src.startsWith("data:")
+        ? src
+        : `/api/image-proxy?url=${encodeURIComponent(src)}`;
+    });
   };
 
   const getJacketDataUrl = (jacketImg: HTMLImageElement | null) => {
@@ -805,6 +888,33 @@ export function TournamentScriptManager({ onBack }: { onBack: () => void }) {
     const link = document.createElement("a");
     link.href = zipUrl;
     link.download = `round${imageRoundIdx + 1}_jackets.zip`;
+    link.click();
+    URL.revokeObjectURL(zipUrl);
+  };
+
+  const handleDownloadTournamentJackets = async () => {
+    const items = getTournamentJacketItems();
+    const zip = new JSZip();
+
+    await Promise.all(
+      items.map(async (item) => {
+        const jacketImg = await loadJacketImage(item.info);
+        const dataUrl = getJacketDataUrl(jacketImg);
+        if (!dataUrl) return;
+
+        zip.file(
+          `round${item.roundIdx + 1}_${item.teamNumber}_${item.songNumber}_jacket.png`,
+          dataUrl.split(",")[1],
+          { base64: true }
+        );
+      })
+    );
+
+    const zipBlob = await zip.generateAsync({ type: "blob" });
+    const zipUrl = URL.createObjectURL(zipBlob);
+    const link = document.createElement("a");
+    link.href = zipUrl;
+    link.download = "tournament_jackets.zip";
     link.click();
     URL.revokeObjectURL(zipUrl);
   };
@@ -3275,6 +3385,21 @@ ${filtered.map((song) => `* ${song}`).join("\n")}`;
 
         {/* Teams Tab */}
         <TabsContent value="teams" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Jacket 다운로드</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Button
+                variant="outline"
+                onClick={handleDownloadTournamentJackets}
+                disabled={getTournamentJacketItems().length === 0}
+              >
+                <Download className="h-4 w-4 mr-2" />
+                모든 라운드 Jacket ZIP 다운로드
+              </Button>
+            </CardContent>
+          </Card>
           <div className="grid md:grid-cols-2 gap-4">
             {[1, 2].map((teamIdx) => (
               <Card key={teamIdx}>

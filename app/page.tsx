@@ -5,10 +5,11 @@ import { ThemeSongPicker } from "@/components/theme-song-picker"
 import { RandomChartPicker } from "@/components/random-chart-picker"
 import { MegamixBrowser } from "@/components/megamix-browser"
 import { TournamentScriptManager } from "@/components/tournament-script-manager"
+import { JacketSearchDownloader } from "@/components/jacket-search-downloader"
 import { Button } from "@/components/ui/button"
-import { Music, Shuffle, ArrowLeft, Grid3X3, MessageSquareText } from "lucide-react"
+import { Music, Shuffle, ArrowLeft, Grid3X3, MessageSquareText, Image } from "lucide-react"
 
-type Mode = "menu" | "random" | "theme" | "megamix" | "tournament"
+type Mode = "menu" | "random" | "theme" | "megamix" | "tournament" | "jacket"
 
 export default function Home() {
   const [mode, setMode] = useState<Mode>("menu")
@@ -20,7 +21,7 @@ export default function Home() {
           <div className="max-w-4xl mx-auto text-center space-y-8">
             <h1 className="text-4xl font-bold tracking-tight">SDVX Chart Picker</h1>
             <p className="text-muted-foreground text-lg">원하는 모드를 선택하세요</p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mt-12">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6 mt-12">
               <Button
                 variant="outline"
                 className="h-40 flex flex-col items-center justify-center gap-4 text-lg hover:bg-primary hover:text-primary-foreground transition-all bg-transparent"
@@ -56,6 +57,15 @@ export default function Home() {
                 <MessageSquareText className="h-12 w-12" />
                 <span className="font-semibold">대회 멘트 관리</span>
                 <span className="text-sm text-muted-foreground">경기 진행 멘트 정리</span>
+              </Button>
+              <Button
+                variant="outline"
+                className="h-40 flex flex-col items-center justify-center gap-4 text-lg hover:bg-primary hover:text-primary-foreground transition-all bg-transparent"
+                onClick={() => setMode("jacket")}
+              >
+                <Image className="h-12 w-12" />
+                <span className="font-semibold">Jacket 다운로드</span>
+                <span className="text-sm text-muted-foreground">곡 검색 후 자켓 저장</span>
               </Button>
             </div>
           </div>
@@ -107,6 +117,16 @@ export default function Home() {
             </Button>
           </div>
           <TournamentScriptManager onBack={() => setMode("menu")} />
+        </div>
+      )}
+
+      {mode === "jacket" && (
+        <div className="container mx-auto px-4 py-8">
+          <Button variant="ghost" className="mb-6" onClick={() => setMode("menu")}>
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            메인으로 돌아가기
+          </Button>
+          <JacketSearchDownloader />
         </div>
       )}
     </main>
