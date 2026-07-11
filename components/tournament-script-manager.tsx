@@ -4768,6 +4768,21 @@ ${filtered.map((song) => `* ${song}`).join("\n")}`;
                 script={generateRecordingStartScript(3)}
                 id="r4-arena-rec-start"
               />
+              <ScriptCard
+                title="엔트리 공개"
+                script={generateEntryScript(3)}
+                id="r4-arena-entry"
+              />
+              <ScriptCard
+                title="4라운드 아레나 입장 안내"
+                script={generateRound4ArenaEntryScript()}
+                id="r4-arena-new"
+              />
+              <ScriptCard
+                title="녹화 종료 안내"
+                script={generateRecordingEndScript(3)}
+                id="r4-arena-rec-end"
+              />
               <Button
                 variant="outline"
                 className="w-full bg-transparent"
@@ -4784,21 +4799,6 @@ ${filtered.map((song) => `* ${song}`).join("\n")}`;
                 <ImageIcon className="h-4 w-4 mr-2" />
                 (밴픽 전) 사전 픽 선곡 목록 이미지 생성
               </Button>
-              <ScriptCard
-                title="엔트리 공개"
-                script={generateEntryScript(3)}
-                id="r4-arena-entry"
-              />
-              <ScriptCard
-                title="4라운드 아레나 입장 안내"
-                script={generateRound4ArenaEntryScript()}
-                id="r4-arena-new"
-              />
-              <ScriptCard
-                title="녹화 종료 안내"
-                script={generateRecordingEndScript(3)}
-                id="r4-arena-rec-end"
-              />
             </div>
           </div>
         </TabsContent>
