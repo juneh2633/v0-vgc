@@ -2482,9 +2482,10 @@ export function TournamentScriptManager({ onBack }: { onBack: () => void }) {
   * 팀 **${data.team1.name}** 선곡 : **${team1Songs}**
 * **팀 ${data.team2.name} : ${round.team2Player || ""}**
   * 팀 **${data.team2.name}** 선곡 : **${team2Songs}**
-## 밴 카드 및 스트래티지 카드 사용여부를 ${
+## 밴 카드 사용여부를 ${
         round.deadline || "??:??"
-      }까지 결정하여 팀 채널에서 알려주시기 바랍니다!`;
+      }까지 결정하여 팀 채널에서 알려주시기 바랍니다!
+- 각 팀에서 밴픽이 종료된 후 추첨곡 및 과제곡 추첨이 진행됩니다.`;
     } else {
       const team1Songs = round.team1SongsLong?.join(" , ") || "";
       const team2Songs = round.team2SongsLong?.join(" , ") || "";
@@ -4765,6 +4766,11 @@ ${filtered.map((song) => `* ${song}`).join("\n")}`;
                 <ImageIcon className="h-4 w-4 mr-2" />
                 (밴픽 전) 사전 픽 선곡 목록 이미지 생성
               </Button>
+              <ScriptCard
+                title="엔트리 공개"
+                script={generateEntryScript(3)}
+                id="r4-arena-entry"
+              />
               <ScriptCard
                 title="4라운드 아레나 입장 안내"
                 script={generateRound4ArenaEntryScript()}
