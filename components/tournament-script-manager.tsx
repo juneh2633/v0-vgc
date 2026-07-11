@@ -2439,9 +2439,12 @@ export function TournamentScriptManager({ onBack }: { onBack: () => void }) {
   const generateRecordingStartScript = (roundIdx: number) => {
     return `# 녹화 시작 안내
 * ${roundIdx + 1}라운드 출전 선수분들 녹화 시작하셨으면 말씀 부탁드립니다.
-* ${
+- ${
       roundIdx + 1
-    }라운드 출전 선수분들 타건음 마이크 음소거 한번 더 확인 부탁드립니다.`;
+    }라운드 출전 선수분들 타건음 마이크 음소거 한번 더 확인 부탁드립니다.
+
+## ⚠️ EX-SCORE 표기 사용 금지
+- **EX-SCORE 표기 사용 시 해당 곡은 0점 처리됩니다. 반드시 일반 스코어 표기를 사용해 주세요.**`;
   };
 
   const generateRecordingEndScript = (roundIdx: number) => {
@@ -2916,23 +2919,23 @@ ${filtered.map((song) => `* ${song}`).join("\n")}`;
     const stage3 = round.stage3DesignatedSong || "미정";
     const stage4 = round.stage4DesignatedSong || "미정";
 
-    let script = `# 4TRACK 지정곡 : ${stage3} / ${stage4}\n`;
-    script += `# 4라운드 출전선수 아레나배틀 방번호 ${room} 로 입장해주세요\n`;
-    script += `팀 ${team1Name} 의 ${team1Player} 선수는 자선곡 ${team1PlayableSong} 을 골라주시고,\n`;
-    script += `${team1ArenaPlayer} 선수는 지정곡 ${stage3} 을 골라주시기 바랍니다.\n`;
+    let script = `# 4TRACK 지정곡: ${stage3} / ${stage4}\n`;
+    script += `# 4라운드 출전 선수분들은 아레나 배틀 방 번호 ${room}로 입장해 주세요.\n\n`;
+    script += `팀 ${team1Name}의 ${team1Player} 선수는 자선곡 **${team1PlayableSong}**을 선택해 주시고,\n`;
+    script += `${team1ArenaPlayer} 선수는 지정곡 **${stage3}**을 선택해 주시기 바랍니다.\n`;
 
     if (team2Banned) {
-      script += `\n팀 ${team1Name} 의 자선곡 ${team2Banned} 는 밴 당하였습니다.\n`;
+      script += `\n팀 ${team1Name}의 자선곡 **${team2Banned}**은 밴되었습니다.\n`;
     }
 
-    script += `\n\n팀 ${team2Name} 의 ${team2Player} 선수는 자선곡 ${team2PlayableSong} 을 골라주시고,\n`;
-    script += `${team2ArenaPlayer} 선수는 지정곡 ${stage4} 을 골라주시기 바랍니다.\n`;
+    script += `\n\n팀 ${team2Name}의 ${team2Player} 선수는 자선곡 **${team2PlayableSong}**을 선택해 주시고,\n`;
+    script += `${team2ArenaPlayer} 선수는 지정곡 **${stage4}**을 선택해 주시기 바랍니다.\n`;
 
     if (team1Banned) {
-      script += `\n팀 ${team2Name} 의 자선곡 ${team1Banned} 는 밴 당하였습니다.\n`;
+      script += `\n팀 ${team2Name}의 자선곡 **${team1Banned}**은 밴되었습니다.\n`;
     }
 
-    script += `\n종료 후 나오는 서브 스크린 결과창 촬영 부탁드립니다.`;
+    script += `\n경기 종료 후 서브 스크린에 표시되는 결과 화면을 촬영해 주세요.\n\n## ⚠️ 보조 선수 플레이 금지\n- **원활한 경기 진행을 위해 보조 선수분들께서는 플레이하지 말아 주시기 바랍니다.**`;
 
     return script;
   };
