@@ -4763,6 +4763,22 @@ ${filtered.map((song) => `* ${song}`).join("\n")}`;
             </div>
 
             <div className="space-y-3">
+              <Button
+                variant="outline"
+                className="w-full bg-transparent"
+                onClick={() => generateSongListImage(3)}
+              >
+                <ImageIcon className="h-4 w-4 mr-2" />
+                선곡 목록 이미지 생성
+              </Button>
+              <Button
+                variant="outline"
+                className="w-full bg-transparent"
+                onClick={() => generatePrePickImage(3)}
+              >
+                <ImageIcon className="h-4 w-4 mr-2" />
+                (밴픽 전) 사전 픽 선곡 목록 이미지 생성
+              </Button>
               <ScriptCard
                 title="녹화 시작 안내"
                 script={generateRecordingStartScript(3)}
@@ -4783,22 +4799,6 @@ ${filtered.map((song) => `* ${song}`).join("\n")}`;
                 script={generateRecordingEndScript(3)}
                 id="r4-arena-rec-end"
               />
-              <Button
-                variant="outline"
-                className="w-full bg-transparent"
-                onClick={() => generateSongListImage(3)}
-              >
-                <ImageIcon className="h-4 w-4 mr-2" />
-                선곡 목록 이미지 생성
-              </Button>
-              <Button
-                variant="outline"
-                className="w-full bg-transparent"
-                onClick={() => generatePrePickImage(3)}
-              >
-                <ImageIcon className="h-4 w-4 mr-2" />
-                (밴픽 전) 사전 픽 선곡 목록 이미지 생성
-              </Button>
             </div>
           </div>
         </TabsContent>
