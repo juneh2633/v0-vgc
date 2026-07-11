@@ -4549,6 +4549,16 @@ ${filtered.map((song) => `* ${song}`).join("\n")}`;
                       placeholder="219219"
                     />
                   </div>
+                  <div>
+                    <Label>마감시간</Label>
+                    <Input
+                      value={data.rounds[3].deadline}
+                      onChange={(e) =>
+                        updateRound(3, "deadline", e.target.value)
+                      }
+                      placeholder="17:34"
+                    />
+                  </div>
                 </CardContent>
               </Card>
 
@@ -4753,6 +4763,11 @@ ${filtered.map((song) => `* ${song}`).join("\n")}`;
             </div>
 
             <div className="space-y-3">
+              <ScriptCard
+                title="녹화 시작 안내"
+                script={generateRecordingStartScript(3)}
+                id="r4-arena-rec-start"
+              />
               <Button
                 variant="outline"
                 className="w-full bg-transparent"
@@ -4778,11 +4793,6 @@ ${filtered.map((song) => `* ${song}`).join("\n")}`;
                 title="4라운드 아레나 입장 안내"
                 script={generateRound4ArenaEntryScript()}
                 id="r4-arena-new"
-              />
-              <ScriptCard
-                title="녹화 시작 안내"
-                script={generateRecordingStartScript(3)}
-                id="r4-arena-rec-start"
               />
               <ScriptCard
                 title="녹화 종료 안내"
