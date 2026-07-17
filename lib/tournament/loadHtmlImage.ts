@@ -3,8 +3,14 @@ const IMAGE_LOAD_TIMEOUT_MS = 12000
 
 const wait = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms))
 
-export const getProxiedImageUrl = (src: string) =>
-  src.startsWith("data:") ? src : `/api/image-proxy?url=${encodeURIComponent(src)}`
+export const getProxiedImageUrl = (src: string, cacheKey?: string) => {
+  if (src.startsWith("data:")) return src
+
+  const params = new URLSearchParams({ url: src })
+  if (cacheKey) params.set("cacheKey", cacheKey)
+
+  return `/api/image-proxy?${params.toString()}`
+}
 
 export const loadHtmlImage = async (src: string): Promise<HTMLImageElement | null> => {
   if (!src) return null
@@ -35,7 +41,7 @@ export const loadHtmlImage = async (src: string): Promise<HTMLImageElement | nul
         console.log(`[v0] Image load failed (attempt ${attemptIndex + 1}), using placeholder`, src)
         settle(null)
       }
-      img.src = getProxiedImageUrl(src)
+      img.src = getProxiedImageUrl(src, `html-${Date.now()}-${attemptIndex}`)
     })
 
     if (image) return image
