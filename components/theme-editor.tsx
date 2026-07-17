@@ -12,6 +12,7 @@ import type { Theme, ThemeSong, ChartData, ThemeData } from "@/lib/types"
 import { exportToCSV, downloadCSV } from "@/lib/csv-utils"
 import useSWR from "swr"
 import Image from "next/image"
+import { getProxiedImageUrl } from "@/lib/tournament/loadHtmlImage"
 
 const fetcher = async (url: string) => {
   const res = await fetch(url)
@@ -260,7 +261,7 @@ export function ThemeEditor({ onBack, initialData }: ThemeEditorProps) {
                     <div className="col-span-1">
                       {song.jacket && (
                         <Image
-                          src={song.jacket || "/placeholder.svg"}
+                          src={song.jacket ? getProxiedImageUrl(song.jacket) : "/placeholder.svg"}
                           alt={song.title}
                           width={32}
                           height={32}
@@ -358,7 +359,7 @@ export function ThemeEditor({ onBack, initialData }: ThemeEditorProps) {
                           >
                             {chart.jacket && (
                               <Image
-                                src={chart.jacket || "/placeholder.svg"}
+                                src={chart.jacket ? getProxiedImageUrl(chart.jacket) : "/placeholder.svg"}
                                 alt={chart.title}
                                 width={40}
                                 height={40}
