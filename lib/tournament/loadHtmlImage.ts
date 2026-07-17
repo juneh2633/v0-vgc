@@ -1,4 +1,5 @@
 const IMAGE_LOAD_RETRY_DELAYS_MS = [0, 350, 900]
+const IMAGE_LOAD_TIMEOUT_MS = 12000
 
 const wait = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms))
 
@@ -13,11 +14,26 @@ export const loadHtmlImage = async (src: string): Promise<HTMLImageElement | nul
 
     const image = await new Promise<HTMLImageElement | null>((resolve) => {
       const img = new window.Image()
+      const timeout = window.setTimeout(() => {
+        img.onload = null
+        img.onerror = null
+        console.log(
+          `[v0] Image load timed out (attempt ${attemptIndex + 1}), using placeholder`,
+          src,
+        )
+        resolve(null)
+      }, IMAGE_LOAD_TIMEOUT_MS)
+
+      const settle = (result: HTMLImageElement | null) => {
+        window.clearTimeout(timeout)
+        resolve(result)
+      }
+
       img.crossOrigin = "anonymous"
-      img.onload = () => resolve(img)
+      img.onload = () => settle(img)
       img.onerror = () => {
         console.log(`[v0] Image load failed (attempt ${attemptIndex + 1}), using placeholder`, src)
-        resolve(null)
+        settle(null)
       }
       img.src = getProxiedImageUrl(src)
     })
