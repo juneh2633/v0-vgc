@@ -47,7 +47,7 @@ import { FlattenedChart } from "@/lib/model/flattenedChart";
 import { SongInfo } from "@/lib/model/songInfo";
 import { chartToSongInfo } from "@/lib/tournament/chartToSongInfo";
 import { loadImageAsBase64 } from "@/lib/tournament/loadImageAsBase64";
-import { loadHtmlImage } from "@/lib/tournament/loadHtmlImage";
+import { getProxiedImageUrl, loadHtmlImage } from "@/lib/tournament/loadHtmlImage";
 import {
   BASE_CARD_HEIGHT,
   BASE_CARD_WIDTH,
@@ -3088,7 +3088,7 @@ ${filtered.map((song) => `* ${song}`).join("\n")}`;
                 >
                   {chart.jacket && (
                     <Image
-                      src={chart.jacket || "/placeholder.svg"}
+                      src={chart.jacket ? getProxiedImageUrl(chart.jacket) : "/placeholder.svg"}
                       alt={chart.title}
                       width={40}
                       height={40}
