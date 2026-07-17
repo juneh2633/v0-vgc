@@ -47,6 +47,7 @@ import { FlattenedChart } from "@/lib/model/flattenedChart";
 import { SongInfo } from "@/lib/model/songInfo";
 import { chartToSongInfo } from "@/lib/tournament/chartToSongInfo";
 import { loadImageAsBase64 } from "@/lib/tournament/loadImageAsBase64";
+import { loadHtmlImage } from "@/lib/tournament/loadHtmlImage";
 import {
   BASE_CARD_HEIGHT,
   BASE_CARD_WIDTH,
@@ -358,26 +359,12 @@ export function TournamentScriptManager({ onBack }: { onBack: () => void }) {
     const teamName = teamIdx === 1 ? data.team1.name : data.team2.name;
     const teamLabel = teamName || (teamIdx === 1 ? "TEAM 1" : "TEAM 2");
 
-    // 자켓 로더 (다른 곳에서 쓰는 패턴 그대로)
-    const loadImage = (src: string): Promise<HTMLImageElement | null> => {
-      return new Promise((resolve) => {
-        if (!src) return resolve(null);
-        const img = new window.Image();
-        img.crossOrigin = "anonymous";
-        img.onload = () => resolve(img);
-        img.onerror = () => resolve(null);
-        img.src = src.startsWith("data:")
-          ? src
-          : `/api/image-proxy?url=${encodeURIComponent(src)}`;
-      });
-    };
-
     const jacketImages: (HTMLImageElement | null)[] = await Promise.all(
       songs.map((song) => {
         if (song.info?.jacketBase64) {
-          return loadImage(song.info.jacketBase64);
+          return loadHtmlImage(song.info.jacketBase64);
         } else if (song.info?.jacket) {
-          return loadImage(song.info.jacket);
+          return loadHtmlImage(song.info.jacket);
         }
         return Promise.resolve(null);
       })
@@ -1036,26 +1023,12 @@ export function TournamentScriptManager({ onBack }: { onBack: () => void }) {
     const songs = [...team1Songs, ...team2Songs];
     const rows = Math.max(team1Songs.length, team2Songs.length);
 
-    // 4) 자켓 이미지 로딩 (base64 우선)
-    const loadImage = (src: string): Promise<HTMLImageElement | null> => {
-      return new Promise((resolve) => {
-        if (!src) return resolve(null);
-        const img = new window.Image();
-        img.crossOrigin = "anonymous";
-        img.onload = () => resolve(img);
-        img.onerror = () => resolve(null);
-        img.src = src.startsWith("data:")
-          ? src
-          : `/api/image-proxy?url=${encodeURIComponent(src)}`;
-      });
-    };
-
     const jacketImages: (HTMLImageElement | null)[] = await Promise.all(
       songs.map((song) => {
         if (song.info?.jacketBase64) {
-          return loadImage(song.info.jacketBase64);
+          return loadHtmlImage(song.info.jacketBase64);
         } else if (song.info?.jacket) {
-          return loadImage(song.info.jacket);
+          return loadHtmlImage(song.info.jacket);
         }
         return Promise.resolve(null);
       })
@@ -1455,28 +1428,12 @@ export function TournamentScriptManager({ onBack }: { onBack: () => void }) {
       return;
     }
 
-    // 4. 자켓 이미지 로딩 (base64 우선, 없으면 URL)
-    const loadImage = (src: string): Promise<HTMLImageElement | null> => {
-      return new Promise((resolve) => {
-        const img = new window.Image();
-        img.crossOrigin = "anonymous";
-        img.onload = () => resolve(img);
-        img.onerror = () => {
-          console.log("[v0] Image load failed, using placeholder", src);
-          resolve(null);
-        };
-        img.src = src.startsWith("data:")
-          ? src
-          : `/api/image-proxy?url=${encodeURIComponent(src)}`;
-      });
-    };
-
     const jacketImages: (HTMLImageElement | null)[] = await Promise.all(
       songs.map((song) => {
         if (song.info?.jacketBase64) {
-          return loadImage(song.info.jacketBase64);
+          return loadHtmlImage(song.info.jacketBase64);
         } else if (song.info?.jacket) {
-          return loadImage(song.info.jacket);
+          return loadHtmlImage(song.info.jacket);
         }
         return Promise.resolve(null);
       })
@@ -1904,25 +1861,13 @@ export function TournamentScriptManager({ onBack }: { onBack: () => void }) {
       // 자켓 로딩용 전체 목록
       const allSongs = [...songs17, ...songs18];
 
-      const loadImage = (src: string): Promise<HTMLImageElement | null> => {
-        return new Promise((resolve) => {
-          if (!src) return resolve(null);
-          const img = new window.Image();
-          img.crossOrigin = "anonymous";
-          img.onload = () => resolve(img);
-          img.onerror = () => resolve(null);
-          img.src = src.startsWith("data:")
-            ? src
-            : `/api/image-proxy?url=${encodeURIComponent(src)}`;
-        });
-      };
 
       const jacketImages: (HTMLImageElement | null)[] = await Promise.all(
         allSongs.map((song) => {
           if (song.info?.jacketBase64) {
-            return loadImage(song.info.jacketBase64);
+            return loadHtmlImage(song.info.jacketBase64);
           } else if (song.info?.jacket) {
-            return loadImage(song.info.jacket);
+            return loadHtmlImage(song.info.jacket);
           }
           return Promise.resolve(null);
         })
@@ -2026,25 +1971,12 @@ export function TournamentScriptManager({ onBack }: { onBack: () => void }) {
 
     ctx.fillText(`${roundTitle} - ${teamLabel}`, canvasWidth / 2, 24);
 
-    const loadImage = (src: string): Promise<HTMLImageElement | null> => {
-      return new Promise((resolve) => {
-        if (!src) return resolve(null);
-        const img = new window.Image();
-        img.crossOrigin = "anonymous";
-        img.onload = () => resolve(img);
-        img.onerror = () => resolve(null);
-        img.src = src.startsWith("data:")
-          ? src
-          : `/api/image-proxy?url=${encodeURIComponent(src)}`;
-      });
-    };
-
     const jacketImages: (HTMLImageElement | null)[] = await Promise.all(
       songs.map((song) => {
         if (song.info?.jacketBase64) {
-          return loadImage(song.info.jacketBase64);
+          return loadHtmlImage(song.info.jacketBase64);
         } else if (song.info?.jacket) {
-          return loadImage(song.info.jacket);
+          return loadHtmlImage(song.info.jacket);
         }
         return Promise.resolve(null);
       })
