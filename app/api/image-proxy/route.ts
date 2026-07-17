@@ -6,12 +6,53 @@ const RETRY_DELAYS_MS = [0, 400, 1000]
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
+const looksLikeImage = (buffer: Buffer) => {
+  if (buffer.length < 4) return false
+
+  return (
+    buffer.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff])) ||
+    buffer
+      .subarray(0, 8)
+      .equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) ||
+    buffer.subarray(0, 6).toString("ascii") === "GIF87a" ||
+    buffer.subarray(0, 6).toString("ascii") === "GIF89a" ||
+    (buffer.subarray(0, 4).toString("ascii") === "RIFF" &&
+      buffer.subarray(8, 12).toString("ascii") === "WEBP") ||
+    buffer.subarray(0, 4).toString("ascii") === "<svg"
+  )
+}
+
+const getSafeImageContentType = (contentType: string, buffer: Buffer) => {
+  const normalizedContentType = contentType.split(";")[0].trim().toLowerCase()
+
+  if (normalizedContentType.startsWith("image/")) return contentType
+  if (!looksLikeImage(buffer)) return null
+
+  if (buffer.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff]))) return "image/jpeg"
+  if (
+    buffer
+      .subarray(0, 8)
+      .equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
+  ) {
+    return "image/png"
+  }
+  if (buffer.subarray(0, 6).toString("ascii").startsWith("GIF")) return "image/gif"
+  if (
+    buffer.subarray(0, 4).toString("ascii") === "RIFF" &&
+    buffer.subarray(8, 12).toString("ascii") === "WEBP"
+  ) {
+    return "image/webp"
+  }
+  if (buffer.subarray(0, 4).toString("ascii") === "<svg") return "image/svg+xml"
+
+  return "image/jpeg"
+}
+
 const fetchImage = async (
   url: string,
   redirectCount = 0,
 ): Promise<{ buffer: Buffer; contentType: string; status: number }> => {
   const parsedUrl = new URL(url)
-  parsedUrl.pathname = parsedUrl.pathname.replace(/\/{2,}/g, "/")
 
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
@@ -73,13 +114,15 @@ export async function GET(request: NextRequest) {
       lastResponse = response
 
       if (response.status >= 200 && response.status < 300) {
-        if (!response.contentType.toLowerCase().startsWith("image/")) {
+        const contentType = getSafeImageContentType(response.contentType, response.buffer)
+
+        if (!contentType) {
           return new NextResponse("URL did not return an image", { status: 415 })
         }
 
         return new NextResponse(new Uint8Array(response.buffer), {
           headers: {
-            "Content-Type": response.contentType,
+            "Content-Type": contentType,
             "Cache-Control": "public, max-age=604800, s-maxage=604800, stale-while-revalidate=86400",
             "Access-Control-Allow-Origin": "*",
           },

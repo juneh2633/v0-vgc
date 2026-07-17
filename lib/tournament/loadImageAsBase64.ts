@@ -1,4 +1,5 @@
 const IMAGE_LOAD_RETRY_DELAYS_MS = [0, 350, 900]
+const IMAGE_FETCH_TIMEOUT_MS = 12000
 
 const wait = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms))
 
@@ -11,6 +12,9 @@ const blobToDataUrl = (blob: Blob): Promise<string | null> =>
   })
 
 export const loadImageAsBase64 = async (url: string): Promise<string | null> => {
+  if (!url) return null
+  if (url.startsWith("data:")) return url
+
   const proxyUrl = `/api/image-proxy?url=${encodeURIComponent(url)}`
 
   for (const [attemptIndex, delay] of IMAGE_LOAD_RETRY_DELAYS_MS.entries()) {
@@ -19,7 +23,11 @@ export const loadImageAsBase64 = async (url: string): Promise<string | null> => 
     }
 
     try {
-      const response = await fetch(proxyUrl, { cache: "force-cache" })
+      const controller = new AbortController()
+      const timeout = window.setTimeout(() => controller.abort(), IMAGE_FETCH_TIMEOUT_MS)
+      const response = await fetch(proxyUrl, { cache: "force-cache", signal: controller.signal }).finally(() =>
+        window.clearTimeout(timeout),
+      )
 
       if (!response.ok) {
         console.log(
