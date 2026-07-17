@@ -2,6 +2,12 @@ import { type NextRequest, NextResponse } from "next/server"
 import http from "node:http"
 import https from "node:https"
 
+const REQUEST_TIMEOUT_MS = 30000
+const MAX_REDIRECTS = 5
+const RETRY_DELAYS_MS = [0, 400, 1000]
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
 const fetchImage = (
   url: string,
   redirectCount = 0,
@@ -14,13 +20,19 @@ const fetchImage = (
     const request = client.get(
       parsedUrl,
       {
-        headers: { "User-Agent": "node" },
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          Accept: "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+          "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
+          Referer: `${parsedUrl.origin}/`,
+        },
       },
       (response) => {
         const status = response.statusCode ?? 500
         const location = response.headers.location
 
-        if (status >= 300 && status < 400 && location && redirectCount < 5) {
+        if (status >= 300 && status < 400 && location && redirectCount < MAX_REDIRECTS) {
           response.resume()
           const redirectUrl = new URL(location, parsedUrl).toString()
           fetchImage(redirectUrl, redirectCount + 1).then(resolve).catch(reject)
@@ -40,7 +52,7 @@ const fetchImage = (
     )
 
     request.on("error", reject)
-    request.setTimeout(15000, () => {
+    request.setTimeout(REQUEST_TIMEOUT_MS, () => {
       request.destroy(new Error("Image request timed out"))
     })
   })
@@ -54,21 +66,37 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const response = await fetchImage(url)
-
-    if (response.status < 200 || response.status >= 300) {
-      return new NextResponse("Failed to fetch image", { status: response.status })
-    }
-
-    return new NextResponse(new Uint8Array(response.buffer), {
-      headers: {
-        "Content-Type": response.contentType,
-        "Cache-Control": "public, max-age=86400",
-        "Access-Control-Allow-Origin": "*",
-      },
-    })
-  } catch (error) {
-    console.error("[v0] Image proxy error:", error)
-    return new NextResponse("Failed to proxy image", { status: 500 })
+    new URL(url)
+  } catch {
+    return new NextResponse("Invalid url parameter", { status: 400 })
   }
+
+  let lastResponse: { buffer: Buffer; contentType: string; status: number } | null = null
+
+  for (const [attemptIndex, delay] of RETRY_DELAYS_MS.entries()) {
+    if (delay > 0) await sleep(delay)
+
+    try {
+      const response = await fetchImage(url)
+      lastResponse = response
+
+      if (response.status >= 200 && response.status < 300) {
+        return new NextResponse(new Uint8Array(response.buffer), {
+          headers: {
+            "Content-Type": response.contentType,
+            "Cache-Control": "public, max-age=604800, s-maxage=604800, stale-while-revalidate=86400",
+            "Access-Control-Allow-Origin": "*",
+          },
+        })
+      }
+
+      if (![408, 425, 429, 500, 502, 503, 504].includes(response.status)) {
+        break
+      }
+    } catch (error) {
+      console.error(`[v0] Image proxy attempt ${attemptIndex + 1} error:`, error)
+    }
+  }
+
+  return new NextResponse("Failed to proxy image", { status: lastResponse?.status || 500 })
 }

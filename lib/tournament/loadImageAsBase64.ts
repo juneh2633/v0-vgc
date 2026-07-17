@@ -1,28 +1,46 @@
-export const loadImageAsBase64 = async (url: string): Promise<string | null> => {
-  return new Promise((resolve) => {
-    const img = new window.Image()
-    img.crossOrigin = "anonymous"
-    img.onload = () => {
-      try {
-        const canvas = document.createElement("canvas")
-        canvas.width = img.width
-        canvas.height = img.height
-        const ctx = canvas.getContext("2d")
-        if (ctx) {
-          ctx.drawImage(img, 0, 0)
-          resolve(canvas.toDataURL("image/jpeg", 0.8))
-        } else {
-          resolve(null)
-        }
-      } catch (e) {
-        console.log("[v0] Failed to convert image to base64:", e)
-        resolve(null)
-      }
-    }
-    img.onerror = () => {
-      console.log("[v0] Failed to load image:", url)
-      resolve(null)
-    }
-    img.src = `/api/image-proxy?url=${encodeURIComponent(url)}`
+const IMAGE_LOAD_RETRY_DELAYS_MS = [0, 350, 900]
+
+const wait = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms))
+
+const blobToDataUrl = (blob: Blob): Promise<string | null> =>
+  new Promise((resolve) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : null)
+    reader.onerror = () => resolve(null)
+    reader.readAsDataURL(blob)
   })
+
+export const loadImageAsBase64 = async (url: string): Promise<string | null> => {
+  const proxyUrl = `/api/image-proxy?url=${encodeURIComponent(url)}`
+
+  for (const [attemptIndex, delay] of IMAGE_LOAD_RETRY_DELAYS_MS.entries()) {
+    if (delay > 0) {
+      await wait(delay)
+    }
+
+    try {
+      const response = await fetch(proxyUrl, { cache: "force-cache" })
+
+      if (!response.ok) {
+        console.log(
+          `[v0] Failed to fetch image for base64 (attempt ${attemptIndex + 1}):`,
+          response.status,
+          url,
+        )
+        continue
+      }
+
+      const blob = await response.blob()
+      const dataUrl = await blobToDataUrl(blob)
+      if (dataUrl) return dataUrl
+    } catch (error) {
+      console.log(
+        `[v0] Failed to load image for base64 (attempt ${attemptIndex + 1}):`,
+        url,
+        error,
+      )
+    }
+  }
+
+  return null
 }
