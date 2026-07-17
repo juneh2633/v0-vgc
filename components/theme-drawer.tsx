@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label"
 import { ArrowLeft, Shuffle, RotateCcw, Pencil } from "lucide-react"
 import type { ThemeData, ThemeSong } from "@/lib/types"
 import Image from "next/image"
+import { getProxiedImageUrl } from "@/lib/tournament/loadHtmlImage"
 
 interface ThemeDrawerProps {
   data: ThemeData
@@ -148,7 +149,7 @@ export function ThemeDrawer({ data, onBack, onEdit }: ThemeDrawerProps) {
                 </div>
                 {currentSong.jacket && (
                   <Image
-                    src={currentSong.jacket || "/placeholder.svg"}
+                    src={currentSong.jacket ? getProxiedImageUrl(currentSong.jacket) : "/placeholder.svg"}
                     alt={currentSong.title}
                     width={200}
                     height={200}
@@ -264,7 +265,7 @@ export function ThemeDrawer({ data, onBack, onEdit }: ThemeDrawerProps) {
                     <div className="text-2xl font-bold text-muted-foreground w-8">{index + 1}</div>
                     {song.jacket && (
                       <Image
-                        src={song.jacket || "/placeholder.svg"}
+                        src={song.jacket ? getProxiedImageUrl(song.jacket) : "/placeholder.svg"}
                         alt={song.title}
                         width={64}
                         height={64}

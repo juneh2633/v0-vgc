@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react"
 import useSWR from "swr"
 import Image from "next/image"
+import { getProxiedImageUrl } from "@/lib/tournament/loadHtmlImage"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -246,7 +247,7 @@ function ChartCard({
   return (
     <div className="group relative aspect-square rounded-lg overflow-hidden bg-muted">
       <Image
-        src={chart.jacket || "/placeholder.svg?height=150&width=150"}
+        src={chart.jacket ? getProxiedImageUrl(chart.jacket) : "/placeholder.svg?height=150&width=150"}
         alt={chart.title}
         fill
         className="object-cover"

@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import type { ChartData } from "@/lib/types";
+import { getProxiedImageUrl } from "@/lib/tournament/loadHtmlImage";
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
@@ -116,7 +117,7 @@ export function JacketSearchDownloader() {
                   className="flex items-center gap-3 rounded-lg border p-3"
                 >
                   <img
-                    src={chart.jacket || "/placeholder.svg"}
+                    src={chart.jacket ? getProxiedImageUrl(chart.jacket) : "/placeholder.svg"}
                     alt={`${chart.title} jacket`}
                     className="h-16 w-16 rounded-md object-cover"
                   />
