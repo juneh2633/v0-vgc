@@ -6,21 +6,6 @@ const RETRY_DELAYS_MS = [0, 400, 1000]
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
-const getFallbackImageUrls = (url: string) => {
-  const urls = [url]
-  const parsedUrl = new URL(url)
-  const normalizedPathname = parsedUrl.pathname.replace(/\/{2,}/g, "/")
-
-  if (normalizedPathname !== parsedUrl.pathname) {
-    parsedUrl.pathname = normalizedPathname
-    const normalizedUrl = parsedUrl.toString()
-
-    if (normalizedUrl !== url) urls.push(normalizedUrl)
-  }
-
-  return urls
-}
-
 const looksLikeImage = (buffer: Buffer) => {
   if (buffer.length < 4) return false
 
@@ -121,40 +106,36 @@ export async function GET(request: NextRequest) {
 
   let lastStatus = 500
   let lastSuccessfulResponseWasNotImage = false
-  const imageUrls = getFallbackImageUrls(url)
+  for (const [attemptIndex, delay] of RETRY_DELAYS_MS.entries()) {
+    if (delay > 0) await sleep(delay)
 
-  for (const imageUrl of imageUrls) {
-    for (const [attemptIndex, delay] of RETRY_DELAYS_MS.entries()) {
-      if (delay > 0) await sleep(delay)
+    try {
+      const response = await fetchImage(url)
+      lastStatus = response.status
+      lastSuccessfulResponseWasNotImage = false
 
-      try {
-        const response = await fetchImage(imageUrl)
-        lastStatus = response.status
-        lastSuccessfulResponseWasNotImage = false
+      if (response.status >= 200 && response.status < 300) {
+        const contentType = getSafeImageContentType(response.contentType, response.buffer)
 
-        if (response.status >= 200 && response.status < 300) {
-          const contentType = getSafeImageContentType(response.contentType, response.buffer)
-
-          if (!contentType) {
-            lastSuccessfulResponseWasNotImage = true
-            break
-          }
-
-          return new NextResponse(new Uint8Array(response.buffer), {
-            headers: {
-              "Content-Type": contentType,
-              "Cache-Control": "public, max-age=604800, s-maxage=604800, stale-while-revalidate=86400",
-              "Access-Control-Allow-Origin": "*",
-            },
-          })
-        }
-
-        if (![408, 425, 429, 500, 502, 503, 504].includes(response.status)) {
+        if (!contentType) {
+          lastSuccessfulResponseWasNotImage = true
           break
         }
-      } catch (error) {
-        console.error(`[v0] Image proxy attempt ${attemptIndex + 1} error:`, error)
+
+        return new NextResponse(new Uint8Array(response.buffer), {
+          headers: {
+            "Content-Type": contentType,
+            "Cache-Control": "public, max-age=604800, s-maxage=604800, stale-while-revalidate=86400",
+            "Access-Control-Allow-Origin": "*",
+          },
+        })
       }
+
+      if (![408, 425, 429, 500, 502, 503, 504].includes(response.status)) {
+        break
+      }
+    } catch (error) {
+      console.error(`[v0] Image proxy attempt ${attemptIndex + 1} error:`, error)
     }
   }
 

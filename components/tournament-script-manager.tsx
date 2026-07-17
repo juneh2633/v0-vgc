@@ -772,18 +772,10 @@ export function TournamentScriptManager({ onBack }: { onBack: () => void }) {
   };
 
   const loadJacketImage = (info: SongInfo | null) => {
-    return new Promise<HTMLImageElement | null>((resolve) => {
-      const src = info?.jacketBase64 || info?.jacket;
-      if (!src) return resolve(null);
+    const src = info?.jacketBase64 || info?.jacket;
+    if (!src) return Promise.resolve(null);
 
-      const img = new window.Image();
-      img.crossOrigin = "anonymous";
-      img.onload = () => resolve(img);
-      img.onerror = () => resolve(null);
-      img.src = src.startsWith("data:")
-        ? src
-        : `/api/image-proxy?url=${encodeURIComponent(src)}`;
-    });
+    return loadHtmlImage(src);
   };
 
   const getJacketDataUrl = (jacketImg: HTMLImageElement | null) => {
