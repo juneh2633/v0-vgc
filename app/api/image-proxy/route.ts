@@ -104,14 +104,15 @@ export async function GET(request: NextRequest) {
     return new NextResponse("Invalid url parameter", { status: 400 })
   }
 
-  let lastResponse: { buffer: Buffer; contentType: string; status: number } | null = null
+  let lastStatus = 500
 
+  // Preserve the exact requested URL. Some jacket hosts break if duplicate slashes are normalized.
   for (const [attemptIndex, delay] of RETRY_DELAYS_MS.entries()) {
     if (delay > 0) await sleep(delay)
 
     try {
       const response = await fetchImage(url)
-      lastResponse = response
+      lastStatus = response.status
 
       if (response.status >= 200 && response.status < 300) {
         const contentType = getSafeImageContentType(response.contentType, response.buffer)
@@ -137,5 +138,5 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  return new NextResponse("Failed to proxy image", { status: lastResponse?.status || 500 })
+  return new NextResponse("Failed to proxy image", { status: lastStatus })
 }
