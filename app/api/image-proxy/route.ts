@@ -104,20 +104,22 @@ export async function GET(request: NextRequest) {
     return new NextResponse("Invalid url parameter", { status: 400 })
   }
 
-  let lastResponse: { buffer: Buffer; contentType: string; status: number } | null = null
-
+  let lastStatus = 500
+  let lastSuccessfulResponseWasNotImage = false
   for (const [attemptIndex, delay] of RETRY_DELAYS_MS.entries()) {
     if (delay > 0) await sleep(delay)
 
     try {
       const response = await fetchImage(url)
-      lastResponse = response
+      lastStatus = response.status
+      lastSuccessfulResponseWasNotImage = false
 
       if (response.status >= 200 && response.status < 300) {
         const contentType = getSafeImageContentType(response.contentType, response.buffer)
 
         if (!contentType) {
-          return new NextResponse("URL did not return an image", { status: 415 })
+          lastSuccessfulResponseWasNotImage = true
+          break
         }
 
         return new NextResponse(new Uint8Array(response.buffer), {
@@ -137,5 +139,9 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  return new NextResponse("Failed to proxy image", { status: lastResponse?.status || 500 })
+  if (lastSuccessfulResponseWasNotImage) {
+    return new NextResponse("URL did not return an image", { status: 415 })
+  }
+
+  return new NextResponse("Failed to proxy image", { status: lastStatus })
 }
