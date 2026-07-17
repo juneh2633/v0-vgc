@@ -15,8 +15,6 @@ export const loadImageAsBase64 = async (url: string): Promise<string | null> => 
   if (!url) return null
   if (url.startsWith("data:")) return url
 
-  const proxyUrl = `/api/image-proxy?url=${encodeURIComponent(url)}`
-
   for (const [attemptIndex, delay] of IMAGE_LOAD_RETRY_DELAYS_MS.entries()) {
     if (delay > 0) {
       await wait(delay)
@@ -25,7 +23,8 @@ export const loadImageAsBase64 = async (url: string): Promise<string | null> => 
     try {
       const controller = new AbortController()
       const timeout = window.setTimeout(() => controller.abort(), IMAGE_FETCH_TIMEOUT_MS)
-      const response = await fetch(proxyUrl, { cache: "force-cache", signal: controller.signal }).finally(() =>
+      const proxyUrl = `/api/image-proxy?url=${encodeURIComponent(url)}&cacheKey=base64-${Date.now()}-${attemptIndex}`
+      const response = await fetch(proxyUrl, { cache: "no-store", signal: controller.signal }).finally(() =>
         window.clearTimeout(timeout),
       )
 
