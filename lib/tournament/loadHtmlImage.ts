@@ -3,6 +3,21 @@ const IMAGE_LOAD_TIMEOUT_MS = 12000
 
 const wait = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms))
 
+const waitForNextFrame = () =>
+  new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()))
+
+const waitForImageDecode = async (img: HTMLImageElement) => {
+  if (typeof img.decode === "function") {
+    try {
+      await img.decode()
+    } catch {
+      // Some browsers reject decode() for images that still drew successfully.
+    }
+  }
+
+  await waitForNextFrame()
+}
+
 export const getProxiedImageUrl = (src: string, cacheKey?: string) => {
   if (src.startsWith("data:")) return src
 
@@ -36,7 +51,10 @@ export const loadHtmlImage = async (src: string): Promise<HTMLImageElement | nul
       }
 
       img.crossOrigin = "anonymous"
-      img.onload = () => settle(img)
+      img.onload = async () => {
+        await waitForImageDecode(img)
+        settle(img)
+      }
       img.onerror = () => {
         console.log(`[v0] Image load failed (attempt ${attemptIndex + 1}), using placeholder`, src)
         settle(null)
@@ -44,7 +62,9 @@ export const loadHtmlImage = async (src: string): Promise<HTMLImageElement | nul
       img.src = getProxiedImageUrl(src, `html-${Date.now()}-${attemptIndex}`)
     })
 
-    if (image) return image
+    if (image?.complete && (image.naturalWidth || image.width) && (image.naturalHeight || image.height)) {
+      return image
+    }
   }
 
   return null
