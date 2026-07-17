@@ -106,6 +106,7 @@ export async function GET(request: NextRequest) {
 
   let lastStatus = 500
   let lastSuccessfulResponseWasNotImage = false
+  // Preserve the exact requested URL. Some jacket hosts break if duplicate slashes are normalized.
   for (const [attemptIndex, delay] of RETRY_DELAYS_MS.entries()) {
     if (delay > 0) await sleep(delay)
 
