@@ -1,6 +1,4 @@
 import { type NextRequest, NextResponse } from "next/server"
-import http from "node:http"
-import https from "node:https"
 
 const REQUEST_TIMEOUT_MS = 30000
 const MAX_REDIRECTS = 5
@@ -41,23 +39,41 @@ const fetchImage = (
           return
         }
 
-        const chunks: Buffer[] = []
-        response.on("data", (chunk) => chunks.push(Buffer.from(chunk)))
-        response.on("end", () => {
-          resolve({
-            buffer: Buffer.concat(chunks),
-            contentType: response.headers["content-type"] || "image/jpeg",
-            status,
-          })
-        })
-      },
-    )
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
 
-    request.on("error", reject)
-    request.setTimeout(REQUEST_TIMEOUT_MS, () => {
-      request.destroy(new Error("Image request timed out"))
+  try {
+    const response = await fetch(parsedUrl, {
+      redirect: "manual",
+      signal: controller.signal,
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (compatible; v0-vgc-image-proxy/1.0; +https://vercel.app)",
+        Accept: "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+        Referer: `${parsedUrl.origin}/`,
+      },
     })
-  })
+
+    const location = response.headers.get("location")
+    if (
+      response.status >= 300 &&
+      response.status < 400 &&
+      location &&
+      redirectCount < MAX_REDIRECTS
+    ) {
+      return fetchImage(new URL(location, parsedUrl).toString(), redirectCount + 1)
+    }
+
+    const arrayBuffer = await response.arrayBuffer()
+    return {
+      buffer: Buffer.from(arrayBuffer),
+      contentType: response.headers.get("content-type") || "image/jpeg",
+      status: response.status,
+    }
+  } finally {
+    clearTimeout(timeout)
+  }
+}
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
