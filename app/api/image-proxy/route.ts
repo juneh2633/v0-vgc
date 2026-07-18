@@ -1,4 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
+import http from "node:http"
+import https from "node:https"
 
 const REQUEST_TIMEOUT_MS = 30000
 const MAX_REDIRECTS = 5
@@ -51,44 +53,45 @@ const getSafeImageContentType = (contentType: string, buffer: Buffer) => {
 const fetchImage = async (
   url: string,
   redirectCount = 0,
-): Promise<{ buffer: Buffer; contentType: string; status: number }> => {
-  const parsedUrl = new URL(url)
+): Promise<{ buffer: Buffer; contentType: string; status: number }> =>
+  new Promise((resolve, reject) => {
+    const parsedUrl = new URL(url)
+    parsedUrl.pathname = parsedUrl.pathname.replace(/\/{2,}/g, "/")
+    const client = parsedUrl.protocol === "http:" ? http : https
 
-  const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
-
-  try {
-    const response = await fetch(parsedUrl, {
-      redirect: "manual",
-      signal: controller.signal,
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (compatible; v0-vgc-image-proxy/1.0; +https://vercel.app)",
-        Accept: "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
-        Referer: `${parsedUrl.origin}/`,
+    const request = client.get(
+      parsedUrl,
+      {
+        headers: { "User-Agent": "node" },
       },
+      (response) => {
+        const status = response.statusCode ?? 500
+        const location = response.headers.location
+
+        if (status >= 300 && status < 400 && location && redirectCount < MAX_REDIRECTS) {
+          response.resume()
+          const redirectUrl = new URL(location, parsedUrl).toString()
+          fetchImage(redirectUrl, redirectCount + 1).then(resolve).catch(reject)
+          return
+        }
+
+        const chunks: Buffer[] = []
+        response.on("data", (chunk) => chunks.push(Buffer.from(chunk)))
+        response.on("end", () => {
+          resolve({
+            buffer: Buffer.concat(chunks),
+            contentType: response.headers["content-type"] || "image/jpeg",
+            status,
+          })
+        })
+      },
+    )
+
+    request.on("error", reject)
+    request.setTimeout(REQUEST_TIMEOUT_MS, () => {
+      request.destroy(new Error("Image request timed out"))
     })
-
-    const location = response.headers.get("location")
-    if (
-      response.status >= 300 &&
-      response.status < 400 &&
-      location &&
-      redirectCount < MAX_REDIRECTS
-    ) {
-      return fetchImage(new URL(location, parsedUrl).toString(), redirectCount + 1)
-    }
-
-    const arrayBuffer = await response.arrayBuffer()
-    return {
-      buffer: Buffer.from(arrayBuffer),
-      contentType: response.headers.get("content-type") || "image/jpeg",
-      status: response.status,
-    }
-  } finally {
-    clearTimeout(timeout)
-  }
-}
+  })
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
@@ -106,6 +109,7 @@ export async function GET(request: NextRequest) {
 
   let lastStatus = 500
   let lastSuccessfulResponseWasNotImage = false
+
   for (const [attemptIndex, delay] of RETRY_DELAYS_MS.entries()) {
     if (delay > 0) await sleep(delay)
 
